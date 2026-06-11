@@ -22,6 +22,7 @@ export default function RoomsPage() {
   const [editOpen, setEditOpen] = useState(false)
   const [editingRoom, setEditingRoom] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
   const [createForm] = Form.useForm()
   const [joinForm] = Form.useForm()
   const [editForm] = Form.useForm()
@@ -161,6 +162,12 @@ export default function RoomsPage() {
     setEditOpen(true)
   }
 
+  const handleOpenJoin = (code) => {
+    setJoinCode(code || '')
+    joinForm.setFieldsValue({ code: code || '' })
+    setJoinOpen(true)
+  }
+
   const isMyRoom = (room) => {
     const hostId = room?.host?.id || room?.host_id
 
@@ -183,7 +190,7 @@ export default function RoomsPage() {
             <Paragraph>Buat room nobar, join dengan kode, dan pantau room milikmu.</Paragraph>
           </div>
           <Space wrap>
-            <Button icon={<LoginOutlined />} onClick={() => setJoinOpen(true)}>
+            <Button icon={<LoginOutlined />} onClick={() => { setJoinCode(''); joinForm.setFieldsValue({ code: '' }); setJoinOpen(true) }}>
               Join Room
             </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
@@ -233,9 +240,15 @@ export default function RoomsPage() {
                   return (
                     <List.Item
                       actions={[
-                        <Link to={`/rooms/${code}`}>
-                          <Button size="small">Detail</Button>
-                        </Link>,
+                        owned ? (
+                          <Link to={`/rooms/${code}`}>
+                            <Button size="small">Detail</Button>
+                          </Link>
+                        ) : (
+                          <Button size="small" icon={<LoginOutlined />} onClick={() => handleOpenJoin(code)}>
+                            Join
+                          </Button>
+                        ),
                         owned ? (
                           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(room)}>
                             Edit
@@ -249,9 +262,7 @@ export default function RoomsPage() {
                       <List.Item.Meta
                         title={
                           <Space>
-                            <Link to={`/rooms/${code}`}>
-                              <strong>{room.name}</strong>
-                            </Link>
+                            <strong>{room.name}</strong>
                             <Tag>{room.status}</Tag>
                           </Space>
                         }
@@ -332,10 +343,10 @@ export default function RoomsPage() {
         </Form>
       </Modal>
 
-      <Modal title="Join room" open={joinOpen} onCancel={() => setJoinOpen(false)} footer={null} destroyOnHidden>
-        <Form form={joinForm} layout="vertical" onFinish={handleJoinRoom} requiredMark={false}>
+      <Modal title="Join room" open={joinOpen} onCancel={() => { setJoinOpen(false); setJoinCode('') }} footer={null} destroyOnHidden>
+        <Form form={joinForm} layout="vertical" onFinish={(values) => { handleJoinRoom(values); setJoinCode('') }} requiredMark={false}>
           <Form.Item label="Kode room" name="code" rules={[{ required: true, message: 'Kode room wajib diisi' }]}>
-            <Input placeholder="Contoh: ABC123" />
+            <Input placeholder="Contoh: ABC123" disabled={!!joinCode} />
           </Form.Item>
           <Form.Item label="Password" name="password">
             <Input.Password placeholder="Isi jika room private" />

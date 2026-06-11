@@ -1,20 +1,18 @@
 import {
-  ApiOutlined,
   CommentOutlined,
+  LoginOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   TeamOutlined,
   UserOutlined,
-  VideoCameraOutlined,
 } from '@ant-design/icons'
-import { Alert, Avatar, Button, Card, Col, Descriptions, Row, Skeleton, Space, Statistic, Tag, Typography } from 'antd'
+import { Alert, Avatar, Button, Card, Col, Form, Input, Row, Space, Statistic, Tag, Typography } from 'antd'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
-import { API_BASE_URL, getApiErrorMessage } from '../services/api'
-import { getMe, getWebRTCConfig } from '../services/authService'
-import { listMovies } from '../services/movieService'
-import { listMyRooms, listRooms } from '../services/roomService'
+import { getApiErrorMessage } from '../services/api'
+import { getMe } from '../services/authService'
+import { joinRoom, listMyRooms } from '../services/roomService'
 import { getUser } from '../stores/authStore'
 
 const { Paragraph, Title, Text } = Typography
@@ -42,30 +40,23 @@ const shortcuts = [
 
 export default function DashboardPage() {
   const [user, setUser] = useState(getUser())
-  const [webrtcConfig, setWebRTCConfig] = useState(null)
-  const [stats, setStats] = useState({ movies: 0, rooms: 0, myRooms: 0 })
+  const [myRooms, setMyRooms] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [joinLoading, setJoinLoading] = useState(false)
+  const [joinForm] = Form.useForm()
+  const navigate = useNavigate()
 
   const loadDashboard = async () => {
     setError('')
     setLoading(true)
-
     try {
-      const [me, rtcConfig, movieResult, roomResult, ownRooms] = await Promise.all([
+      const [me, ownRooms] = await Promise.all([
         getMe(),
-        getWebRTCConfig(),
-        listMovies({ page: 1, per_page: 1 }),
-        listRooms({ page: 1, per_page: 1 }),
         listMyRooms(),
       ])
       setUser(me)
-      setWebRTCConfig(rtcConfig)
-      setStats({
-        movies: movieResult.meta?.total ?? movieResult.data.length,
-        rooms: roomResult.meta?.total ?? roomResult.data.length,
-        myRooms: ownRooms.length,
-      })
+      setMyRooms(ownRooms)
     } catch (err) {
       setError(getApiErrorMessage(err, 'Gagal memuat dashboard. Pastikan backend berjalan.'))
     } finally {
@@ -75,151 +66,105 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let active = true
-
     async function fetchInitialDashboard() {
       try {
-        const [me, rtcConfig, movieResult, roomResult, ownRooms] = await Promise.all([
+        const [me, ownRooms] = await Promise.all([
           getMe(),
-          getWebRTCConfig(),
-          listMovies({ page: 1, per_page: 1 }),
-          listRooms({ page: 1, per_page: 1 }),
           listMyRooms(),
         ])
-
-        if (!active) {
-          return
-        }
-
+        if (!active) return
         setUser(me)
-        setWebRTCConfig(rtcConfig)
-        setStats({
-          movies: movieResult.meta?.total ?? movieResult.data.length,
-          rooms: roomResult.meta?.total ?? roomResult.data.length,
-          myRooms: ownRooms.length,
-        })
+        setMyRooms(ownRooms)
       } catch (err) {
-        if (active) {
-          setError(getApiErrorMessage(err, 'Gagal memuat dashboard. Pastikan backend berjalan.'))
-        }
+        if (active) setError(getApiErrorMessage(err, 'Gagal memuat dashboard. Pastikan backend berjalan.'))
       } finally {
-        if (active) {
-          setLoading(false)
-        }
+        if (active) setLoading(false)
       }
     }
-
     fetchInitialDashboard()
-
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [])
+
+  const handleQuickJoin = async (values) => {
+    setError('')
+    setJoinLoading(true)
+    try {
+      const code = String(values.code || '').trim().toUpperCase()
+      await joinRoom(code, { password: values.password || null })
+      joinForm.resetFields()
+      navigate(`/rooms/${code}`)
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Gagal join room. Cek kode dan password.'))
+    } finally {
+      setJoinLoading(false)
+    }
+  }
+
+  const roomCount = myRooms.length
 
   return (
     <AppLayout>
       <Space orientation="vertical" size={24} className="full-width">
         <div className="dashboard-hero">
           <div>
-            <Text className="eyebrow">Dashboard MVP</Text>
             <Title level={1}>Selamat datang{user?.name ? `, ${user.name}` : ''}</Title>
-            <Paragraph>
-              MVP Nobarkan sudah mencakup auth, movies, rooms, profile, chat history, dan WebRTC config.
-            </Paragraph>
           </div>
           <Button icon={<ReloadOutlined />} onClick={loadDashboard} loading={loading}>
             Refresh
           </Button>
         </div>
 
-        {error ? <Alert type="warning" title={error} showIcon /> : null}
+        {error ? <Alert type="warning" title={error} showIcon closable onClose={() => setError('')} /> : null}
+
+        <Card variant="borderless" className="dashboard-card">
+          <Title level={4}>Gabung ke Room</Title>
+          <Form form={joinForm} layout="inline" onFinish={handleQuickJoin} requiredMark={false} style={{ flexWrap: 'wrap', gap: 12 }}>
+            <Form.Item
+              name="code"
+              rules={[{ required: true, message: 'Masukkan kode room' }]}
+              style={{ minWidth: 180 }}
+            >
+              <Input
+                placeholder="Kode room, contoh: ABC123"
+                style={{ textTransform: 'uppercase' }}
+                onChange={(e) => {
+                  e.target.value = e.target.value.toUpperCase()
+                }}
+              />
+            </Form.Item>
+            <Form.Item name="password" style={{ minWidth: 160 }}>
+              <Input.Password placeholder="Password (jika private)" />
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" htmlType="submit" icon={<LoginOutlined />} loading={joinLoading}>
+                Join
+              </Button>
+            </Form.Item>
+          </Form>
+        </Card>
 
         <Row gutter={[20, 20]}>
           <Col xs={24} md={8}>
             <Card variant="borderless" className="dashboard-card">
-              <Statistic title="Total Movies" value={stats.movies} loading={loading} />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card variant="borderless" className="dashboard-card">
-              <Statistic title="Room Aktif" value={stats.rooms} loading={loading} />
-            </Card>
-          </Col>
-          <Col xs={24} md={8}>
-            <Card variant="borderless" className="dashboard-card">
-              <Statistic title="Room Saya" value={stats.myRooms} loading={loading} />
+              <Statistic title="Room Saya" value={roomCount} loading={loading} />
             </Card>
           </Col>
         </Row>
 
         <Row gutter={[20, 20]}>
           <Col xs={24} lg={12}>
-            <Card title="Profil user" variant="borderless" className="dashboard-card">
-              {loading && !user ? (
-                <Skeleton active avatar paragraph={{ rows: 3 }} />
-              ) : (
-                <Space align="start" size={16}>
-                  <Avatar size={56} icon={<UserOutlined />} src={user?.avatar_url} />
-                  <Descriptions column={1} size="small">
-                    <Descriptions.Item label="Nama">{user?.name || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Email">{user?.email || '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Role">{user?.role || 'user'}</Descriptions.Item>
-                  </Descriptions>
+            <Card title="Profil" variant="borderless" className="dashboard-card">
+              <Space align="start" size={16}>
+                <Avatar size={56} icon={<UserOutlined />} src={user?.avatar_url} />
+                <Space direction="vertical" size={4}>
+                  <Text strong>{user?.name || '-'}</Text>
+                  <Text type="secondary">{user?.email || '-'}</Text>
+                  <Tag>{user?.role || 'user'}</Tag>
                 </Space>
-              )}
-            </Card>
-          </Col>
-
-          <Col xs={24} lg={12}>
-            <Card title="Status API" variant="borderless" className="dashboard-card">
-              <Space orientation="vertical" size={12} className="full-width">
-                <Space>
-                  <ApiOutlined />
-                  <Text strong>Base URL</Text>
-                </Space>
-                <Tag color="blue">{API_BASE_URL}</Tag>
-                <Text type="secondary">Frontend sudah consume endpoint auth, users, movies, rooms, chats, dan WebRTC config.</Text>
               </Space>
             </Card>
           </Col>
         </Row>
-
-        <Card
-          title={
-            <Space>
-              <VideoCameraOutlined />
-              WebRTC STUN config
-            </Space>
-          }
-          variant="borderless"
-          className="dashboard-card"
-        >
-          {loading && !webrtcConfig ? (
-            <Skeleton active paragraph={{ rows: 2 }} />
-          ) : (
-            <Space orientation="vertical" size={12} className="full-width">
-              <Descriptions column={{ xs: 1, md: 2 }} size="small">
-                <Descriptions.Item label="Mode">STUN-only ready</Descriptions.Item>
-                <Descriptions.Item label="Max participants">
-                  {webrtcConfig?.max_participants ?? '-'}
-                </Descriptions.Item>
-              </Descriptions>
-              <div>
-                <Text strong>ICE servers</Text>
-                <div className="tag-list">
-                  {(webrtcConfig?.ice_servers || webrtcConfig?.stun_urls || []).length > 0 ? (
-                    (webrtcConfig?.ice_servers || webrtcConfig?.stun_urls || []).map((server) => (
-                      <Tag color="purple" key={JSON.stringify(server)}>
-                        {typeof server === 'string' ? server : server.urls?.toString()}
-                      </Tag>
-                    ))
-                  ) : (
-                    <Text type="secondary">Belum ada konfigurasi STUN dari backend.</Text>
-                  )}
-                </div>
-              </div>
-            </Space>
-          )}
-        </Card>
 
         <Row gutter={[20, 20]}>
           {shortcuts.map((item) => (

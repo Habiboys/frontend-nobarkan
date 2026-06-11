@@ -211,6 +211,9 @@ export default function RoomDetailPage() {
   const [cacheStatus, setCacheStatus] = useState(null);
   const [cacheProgress, setCacheProgress] = useState(null);
   const [videoRetryKey, setVideoRetryKey] = useState(0);
+  const [joinGateOpen, setJoinGateOpen] = useState(false);
+  const [joinGateLoading, setJoinGateLoading] = useState(false);
+  const [joinGateForm] = Form.useForm();
   const videoWrapperRef = useRef(null);
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -417,6 +420,14 @@ export default function RoomDetailPage() {
     peer.ontrack = (event) => {
       const stream = event.streams?.[0];
       if (!stream) return;
+      // Monitor tracks — auto-remove on track end
+      stream.getTracks().forEach((track) => {
+        track.onended = () => {
+          setRemoteStreams((current) =>
+            current.filter((s) => s.userID !== targetUserID),
+          );
+        };
+      });
       setRemoteStreams((current) => {
         const idx = current.findIndex((item) => item.userID === targetUserID);
         if (idx >= 0) {
@@ -483,7 +494,29 @@ export default function RoomDetailPage() {
           audio: true,
         });
       }
-      localStreamRef.current = stream;
+
+      // Boost mic volume via AudioContext GainNode
+      try {
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          const audioCtx = new AudioContext();
+          const source = audioCtx.createMediaStreamSource(stream);
+          const gainNode = audioCtx.createGain();
+          gainNode.gain.value = 2.5; // boost volume
+          const dest = audioCtx.createMediaStreamDestination();
+          source.connect(gainNode).connect(dest);
+          // Keep the original video track, replace audio with boosted version
+          const videoTrack = stream.getVideoTracks()[0];
+          const boostedStream = new MediaStream([videoTrack, ...dest.stream.getAudioTracks()].filter(Boolean));
+          localStreamRef.current = boostedStream;
+          // Store AudioContext ref so we can clean up later
+          window.__nobarkanAudioCtx = audioCtx;
+        } else {
+          localStreamRef.current = stream;
+        }
+      } catch {
+        localStreamRef.current = stream;
+      }
       camActiveRef.current = true;
       setCamActive(true);
       setMicMuted(false);
@@ -573,6 +606,10 @@ export default function RoomDetailPage() {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (window.__nobarkanAudioCtx) {
+      window.__nobarkanAudioCtx.close().catch(() => {});
+      delete window.__nobarkanAudioCtx;
+    }
 
     closeAllPeers();
     camActiveRef.current = false;
@@ -626,6 +663,14 @@ export default function RoomDetailPage() {
     peer.ontrack = (event) => {
       const stream = event.streams?.[0];
       if (!stream) return;
+      // Monitor tracks — auto-remove on track end
+      stream.getTracks().forEach((track) => {
+        track.onended = () => {
+          setRemoteStreams((current) =>
+            current.filter((s) => s.userID !== senderID),
+          );
+        };
+      });
       setRemoteStreams((current) => {
         const idx = current.findIndex((s) => s.userID === senderID);
         if (idx >= 0) {
@@ -748,11 +793,9 @@ export default function RoomDetailPage() {
         }
 
         roomSocket.connect(joinResult.ws_token);
-      } catch (err) {
-        if (active)
-          setActionError(
-            getApiErrorMessage(err, "Gagal membuka koneksi real-time"),
-          );
+      } catch {
+        if (!active) return;
+        setJoinGateOpen(true);
       }
     }
 
@@ -987,6 +1030,31 @@ export default function RoomDetailPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
+
+  const handleJoinGate = async (values) => {
+    setJoinGateLoading(true);
+    try {
+      const joinResult = await joinRoom(code, {
+        password: values.password || null,
+      });
+      setJoinGateOpen(false);
+      joinGateForm.resetFields();
+
+      if (joinResult?.room?.members) {
+        setMembers(joinResult.room.members);
+        membersRef.current = joinResult.room.members;
+      }
+      roomSocket.connect(joinResult.ws_token);
+    } catch (err) {
+      const msg = getApiErrorMessage(
+        err,
+        "Gagal bergabung. Cek kode room atau password.",
+      );
+      setActionError(msg);
+    } finally {
+      setJoinGateLoading(false);
+    }
+  };
 
   const handleLeave = async () => {
     setActionError("");
@@ -1951,6 +2019,39 @@ export default function RoomDetailPage() {
           </Col>
         </Row>
       </Space>
+
+      <Modal
+        title="Gabung ke Room"
+        open={joinGateOpen}
+        centered
+        closable={false}
+        maskClosable={false}
+        footer={null}
+        destroyOnClose
+      >
+        <Form form={joinGateForm} layout="vertical" onFinish={handleJoinGate} requiredMark={false}>
+          <Form.Item label="Kode Room">
+            <Input value={code} disabled />
+          </Form.Item>
+          <Form.Item label="Password" name="password">
+            <Input.Password placeholder="Isi jika room private" />
+          </Form.Item>
+          <Space direction="vertical" className="full-width">
+            <Button type="primary" htmlType="submit" loading={joinGateLoading} block>
+              Gabung
+            </Button>
+            <Button
+              block
+              onClick={() => {
+                setJoinGateOpen(false);
+                navigate('/rooms');
+              }}
+            >
+              Batal
+            </Button>
+          </Space>
+        </Form>
+      </Modal>
     </AppLayout>
   );
 }
@@ -1969,10 +2070,30 @@ function ParticipantTile({
   useEffect(() => {
     if (remoteRef.current && stream) {
       remoteRef.current.srcObject = stream;
-      // Explicitly play to ensure audio starts (browser autoplay policy)
       remoteRef.current.play().catch(() => {});
     }
   }, [stream]);
+
+  useEffect(() => {
+    const el = remoteRef.current;
+    if (!el || !stream) return;
+    const onPlaying = () => {
+      el.style.visibility = "visible";
+    };
+    const onStalled = () => {
+      el.play().catch(() => {});
+    };
+    el.addEventListener("playing", onPlaying);
+    el.addEventListener("stalled", onStalled);
+    el.addEventListener("suspend", onStalled);
+    return () => {
+      el.removeEventListener("playing", onPlaying);
+      el.removeEventListener("stalled", onStalled);
+      el.removeEventListener("suspend", onStalled);
+    };
+  }, [stream]);
+
+  const streamKey = stream?.id || "no-stream";
 
   if (isMe && camActive) {
     return (
@@ -1995,6 +2116,7 @@ function ParticipantTile({
         <video
           ref={remoteRef}
           className="participant-video"
+          key={streamKey}
           autoPlay
           playsInline
         />
