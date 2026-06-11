@@ -477,7 +477,18 @@ export default function RoomDetailPage() {
     try {
       const constraints = {
         video: camId ? { deviceId: { exact: camId } } : { facingMode: "user" },
-        audio: micId ? { deviceId: { exact: micId } } : true,
+        audio: micId
+          ? {
+              deviceId: { exact: micId },
+              echoCancellation: true,
+              noiseSuppression: false,
+              autoGainControl: false,
+            }
+          : {
+              echoCancellation: true,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
       };
 
       let stream;
@@ -491,32 +502,14 @@ export default function RoomDetailPage() {
           throw err;
         stream = await navigator.mediaDevices.getUserMedia({
           video: true,
-          audio: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
         });
       }
-
-      // Boost mic volume via AudioContext GainNode
-      try {
-        const audioTrack = stream.getAudioTracks()[0];
-        if (audioTrack) {
-          const audioCtx = new AudioContext();
-          const source = audioCtx.createMediaStreamSource(stream);
-          const gainNode = audioCtx.createGain();
-          gainNode.gain.value = 2.5; // boost volume
-          const dest = audioCtx.createMediaStreamDestination();
-          source.connect(gainNode).connect(dest);
-          // Keep the original video track, replace audio with boosted version
-          const videoTrack = stream.getVideoTracks()[0];
-          const boostedStream = new MediaStream([videoTrack, ...dest.stream.getAudioTracks()].filter(Boolean));
-          localStreamRef.current = boostedStream;
-          // Store AudioContext ref so we can clean up later
-          window.__nobarkanAudioCtx = audioCtx;
-        } else {
-          localStreamRef.current = stream;
-        }
-      } catch {
-        localStreamRef.current = stream;
-      }
+      localStreamRef.current = stream;
       camActiveRef.current = true;
       setCamActive(true);
       setMicMuted(false);
@@ -606,10 +599,6 @@ export default function RoomDetailPage() {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (window.__nobarkanAudioCtx) {
-      window.__nobarkanAudioCtx.close().catch(() => {});
-      delete window.__nobarkanAudioCtx;
-    }
 
     closeAllPeers();
     camActiveRef.current = false;
@@ -2070,6 +2059,7 @@ function ParticipantTile({
   useEffect(() => {
     if (remoteRef.current && stream) {
       remoteRef.current.srcObject = stream;
+      remoteRef.current.volume = 1.0;
       remoteRef.current.play().catch(() => {});
     }
   }, [stream]);
