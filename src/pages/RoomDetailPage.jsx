@@ -568,13 +568,6 @@ export default function RoomDetailPage() {
         setRoom(roomData)
         setMembers(roomData.members ?? [])
         membersRef.current = roomData.members ?? []
-        setOnlineMembers((current) => {
-          const next = new Set(current)
-          for (const m of roomData.members ?? []) {
-            if (m.id) next.add(m.id)
-          }
-          return next
-        })
       }).catch(() => {})
 
       const hostId = (roomRef.current?.host?.id || roomRef.current?.host_id)
