@@ -27,7 +27,6 @@ import {
   Form,
   Input,
   Modal,
-  notification,
   Popconfirm,
   Row,
   Select,
@@ -194,6 +193,7 @@ export default function RoomDetailPage() {
   const [showControls, setShowControls] = useState(false);
   const controlsTimerRef = useRef(null);
   const [chatForm] = Form.useForm();
+  const [fullscreenChatForm] = Form.useForm();
   const [remoteStreams, setRemoteStreams] = useState([]);
   const [camActive, setCamActive] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
@@ -202,9 +202,11 @@ export default function RoomDetailPage() {
   const [availableDevices, setAvailableDevices] = useState({
     video: [],
     audio: [],
+    audioOutput: [],
   });
   const [selectedVideoDevice, setSelectedVideoDevice] = useState("");
   const [selectedAudioDevice, setSelectedAudioDevice] = useState("");
+  const [selectedAudioOutputDevice, setSelectedAudioOutputDevice] = useState("");
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const currentUser = getUser();
   const [videoError, setVideoError] = useState("");
@@ -215,11 +217,11 @@ export default function RoomDetailPage() {
   const [joinGateOpen, setJoinGateOpen] = useState(false);
   const [joinGateLoading, setJoinGateLoading] = useState(false);
   const [joinGateForm] = Form.useForm();
-  const [showVideoPanel, setShowVideoPanel] = useState(true);
-  const [showChatPanel, setShowChatPanel] = useState(true);
+  const [fullscreenJoinNotice, setFullscreenJoinNotice] = useState(null);
   const videoWrapperRef = useRef(null);
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
+  const fullscreenLocalVideoRef = useRef(null);
   const localStreamRef = useRef(null);
   const peersRef = useRef({}); // My outgoing peers (I offered): keyed by targetUserID
   const answerPeersRef = useRef({}); // Incoming peers (they offered): keyed by senderUserID
@@ -243,10 +245,14 @@ export default function RoomDetailPage() {
 
   // When cam is turned on, ensure the local video element gets the stream
   useEffect(() => {
-    if (camActive && localVideoRef.current && localStreamRef.current) {
-      localVideoRef.current.srcObject = localStreamRef.current;
+    if (camActive && localStreamRef.current) {
+      [localVideoRef.current, fullscreenLocalVideoRef.current].forEach((el) => {
+        if (!el) return;
+        el.srcObject = localStreamRef.current;
+        el.play().catch(() => {});
+      });
     }
-  }, [camActive]);
+  }, [camActive, isFullscreen]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -476,22 +482,11 @@ export default function RoomDetailPage() {
   }
 
   // I start my camera/mic
-  async function startMyCam(camId, micId) {
+  async function startMyCam(camId) {
     try {
       const constraints = {
         video: camId ? { deviceId: { exact: camId } } : { facingMode: "user" },
-        audio: micId
-          ? {
-              deviceId: { exact: micId },
-              echoCancellation: true,
-              noiseSuppression: false,
-              autoGainControl: false,
-            }
-          : {
-              echoCancellation: true,
-              noiseSuppression: false,
-              autoGainControl: false,
-            },
+        audio: false,
       };
 
       let stream;
@@ -505,17 +500,18 @@ export default function RoomDetailPage() {
           throw err;
         stream = await navigator.mediaDevices.getUserMedia({
           video: true,
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
+          audio: false,
         });
       }
       localStreamRef.current = stream;
+      [localVideoRef.current, fullscreenLocalVideoRef.current].forEach((el) => {
+        if (!el) return;
+        el.srcObject = stream;
+        el.play().catch(() => {});
+      });
       camActiveRef.current = true;
       setCamActive(true);
-      setMicMuted(false);
+      setMicMuted(true);
       setShowDevicePicker(false);
 
       // Notify others
@@ -554,7 +550,7 @@ export default function RoomDetailPage() {
       try {
         const tempStream = await navigator.mediaDevices.getUserMedia({
           video: true,
-          audio: true,
+          audio: false,
         });
         // Stop temporary stream immediately — we only needed it for permission
         tempStream.getTracks().forEach((track) => track.stop());
@@ -564,11 +560,18 @@ export default function RoomDetailPage() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter((d) => d.kind === "videoinput");
       const audioDevices = devices.filter((d) => d.kind === "audioinput");
-      setAvailableDevices({ video: videoDevices, audio: audioDevices });
+      const audioOutputDevices = devices.filter((d) => d.kind === "audiooutput");
+      setAvailableDevices({
+        video: videoDevices,
+        audio: audioDevices,
+        audioOutput: audioOutputDevices,
+      });
       if (videoDevices.length > 0 && !selectedVideoDevice)
         setSelectedVideoDevice(videoDevices[0].deviceId);
       if (audioDevices.length > 0 && !selectedAudioDevice)
         setSelectedAudioDevice(audioDevices[0].deviceId);
+      if (audioOutputDevices.length > 0 && !selectedAudioOutputDevice)
+        setSelectedAudioOutputDevice(audioOutputDevices[0].deviceId);
     } catch {
       // ignore enumeration errors
     }
@@ -592,7 +595,7 @@ export default function RoomDetailPage() {
   }
 
   function handleConfirmCam() {
-    startMyCam(selectedVideoDevice, selectedAudioDevice);
+    startMyCam(selectedVideoDevice);
   }
 
   // I stop my camera/mic
@@ -602,23 +605,88 @@ export default function RoomDetailPage() {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (fullscreenLocalVideoRef.current) fullscreenLocalVideoRef.current.srcObject = null;
 
     closeAllPeers();
     camActiveRef.current = false;
     setCamActive(false);
+    setMicMuted(true);
     // Remove remote streams that belong to peers I initiated
     // (They will also be removed when they stop their cam or disconnect)
   }
 
   // Toggle mic
-  function toggleMic() {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setMicMuted(!audioTrack.enabled);
+  async function toggleMic() {
+    if (!localStreamRef.current) return;
+
+    let audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (!audioTrack) {
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: selectedAudioDevice
+            ? {
+                deviceId: { exact: selectedAudioDevice },
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                channelCount: 1,
+                sampleRate: 48000,
+              }
+            : {
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                channelCount: 1,
+                sampleRate: 48000,
+              },
+        });
+        audioTrack = audioStream.getAudioTracks()[0];
+        if (!audioTrack) return;
+        localStreamRef.current.addTrack(audioTrack);
+
+        const peerEntries = [
+          ...Object.entries(peersRef.current),
+          ...Object.entries(answerPeersRef.current),
+        ];
+        for (const [targetUserID, peer] of peerEntries) {
+          if (peer.getSenders().some((sender) => sender.track?.kind === "audio")) continue;
+          peer.addTrack(audioTrack, localStreamRef.current);
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          roomSocket.send("webrtc:offer", {
+            target_user_id: targetUserID,
+            sdp: offer.sdp,
+          });
+        }
+        audioTrack.enabled = true;
+        setMicMuted(false);
+        return;
+      } catch (err) {
+        setActionError(getApiErrorMessage(err, "Tidak bisa mengaktifkan mikrofon"));
+        return;
       }
     }
+
+    const peerEntries = [
+      ...Object.entries(peersRef.current),
+      ...Object.entries(answerPeersRef.current),
+    ];
+    for (const [targetUserID, peer] of peerEntries) {
+      peer
+        .getSenders()
+        .filter((sender) => sender.track?.kind === "audio")
+        .forEach((sender) => peer.removeTrack(sender));
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      roomSocket.send("webrtc:offer", {
+        target_user_id: targetUserID,
+        sdp: offer.sdp,
+      });
+    }
+    localStreamRef.current.removeTrack(audioTrack);
+    audioTrack.stop();
+    setMicMuted(true);
   }
 
   // --- Remote WebRTC handlers ---
@@ -907,28 +975,8 @@ export default function RoomDetailPage() {
       // Notify host to pause & play so member syncs correctly
       const hostId = roomRef.current?.host?.id || roomRef.current?.host_id;
       if (member.id !== currentUser?.id && hostId === currentUser?.id) {
-        notification.info({
-          message: `${member.name || member.username || "Member"} bergabung`,
-          description: "Klik Lanjutkan untuk menyinkronkan video member.",
-          placement: "topRight",
-          duration: 0,
-          btn: (
-            <Button
-              type="primary"
-              size="small"
-              onClick={() => {
-                notification.destroy();
-                roomSocket.send("player:play", {
-                  current_time: videoRef.current?.currentTime || 0,
-                  is_playing: true,
-                  sent_at: Date.now(),
-                });
-                if (videoRef.current) videoRef.current.play().catch(() => {});
-              }}
-            >
-              Lanjutkan
-            </Button>
-          ),
+        setFullscreenJoinNotice({
+          name: member.name || member.username || "Member",
         });
       }
     };
@@ -1106,6 +1154,7 @@ export default function RoomDetailPage() {
     }
 
     chatForm.resetFields();
+    fullscreenChatForm.resetFields();
   };
 
   const hostID = room?.host?.id || room?.host_id;
@@ -1208,6 +1257,19 @@ export default function RoomDetailPage() {
     }
   };
 
+  const handleAudioOutputChange = async (deviceId) => {
+    setSelectedAudioOutputDevice(deviceId);
+    if (!videoRef.current || typeof videoRef.current.setSinkId !== "function") {
+      setActionError("Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop.");
+      return;
+    }
+    try {
+      await videoRef.current.setSinkId(deviceId);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Tidak bisa mengganti output audio film"));
+    }
+  };
+
   const toggleFullscreen = async () => {
     if (!videoWrapperRef.current) return;
 
@@ -1291,6 +1353,16 @@ export default function RoomDetailPage() {
       if (timer) clearTimeout(timer);
     };
   }, [driveDirectURL, videoURL]);
+
+  useEffect(() => {
+    if (
+      videoRef.current &&
+      selectedAudioOutputDevice &&
+      typeof videoRef.current.setSinkId === "function"
+    ) {
+      videoRef.current.setSinkId(selectedAudioOutputDevice).catch(() => {});
+    }
+  }, [selectedAudioOutputDevice, videoRetryKey]);
 
   // Apply player state changes to video element (backup for when sync fires before video is ready)
   useEffect(() => {
@@ -1484,7 +1556,7 @@ export default function RoomDetailPage() {
         {error ? (
           <Alert
             type="warning"
-            message={error}
+            title={error}
             showIcon
             closable
             onClose={() => setError("")}
@@ -1493,7 +1565,7 @@ export default function RoomDetailPage() {
         {actionError ? (
           <Alert
             type="error"
-            message={actionError}
+            title={actionError}
             showIcon
             closable
             onClose={() => setActionError("")}
@@ -1502,7 +1574,7 @@ export default function RoomDetailPage() {
         {driveError ? (
           <Alert
             type="error"
-            message={driveError.title}
+            title={driveError.title}
             description={
               <Space orientation="vertical" size={8}>
                 <Text>{driveError.message}</Text>
@@ -1675,6 +1747,18 @@ export default function RoomDetailPage() {
                           value={videoVolume}
                           onChange={handleVolumeChange}
                         />
+                        {availableDevices.audioOutput.length > 0 ? (
+                          <Select
+                            className="video-output-select"
+                            size="small"
+                            value={selectedAudioOutputDevice}
+                            onChange={handleAudioOutputChange}
+                            options={availableDevices.audioOutput.map((d) => ({
+                              label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
+                              value: d.deviceId,
+                            }))}
+                          />
+                        ) : null}
                       </div>
                     </div>
                     <Button
@@ -1694,6 +1778,165 @@ export default function RoomDetailPage() {
                         {playerState.is_playing ? "Playing" : "Paused"} —{" "}
                         {playerState.user_name}
                       </Text>
+                    </div>
+                  ) : null}
+
+                  {fullscreenJoinNotice ? (
+                    <div className="fullscreen-join-modal-backdrop">
+                      <div className="fullscreen-join-modal">
+                        <Title level={4}>{fullscreenJoinNotice.name} bergabung</Title>
+                        <Text type="secondary">Klik Lanjutkan untuk sinkron video.</Text>
+                        <Button
+                          type="primary"
+                          onClick={() => {
+                            setFullscreenJoinNotice(null);
+                            roomSocket.send("player:play", {
+                              current_time: videoRef.current?.currentTime || 0,
+                              is_playing: true,
+                              sent_at: Date.now(),
+                            });
+                            if (videoRef.current) videoRef.current.play().catch(() => {});
+                          }}
+                        >
+                          Lanjutkan
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {isFullscreen ? (
+                    <div className="fullscreen-side-drawer">
+                      <div className="fullscreen-drawer-handle">‹</div>
+                      <div className="fullscreen-drawer-content">
+                        <div className="fullscreen-panel fullscreen-video-panel">
+                          <Text strong>Video Call</Text>
+                          {!camActive ? (
+                            !showDevicePicker ? (
+                              <Space wrap className="fullscreen-call-actions">
+                                <Button
+                                  type="primary"
+                                  size="small"
+                                  icon={<VideoCameraAddOutlined />}
+                                  onClick={handleStartCamClick}
+                                >
+                                  Nyalakan Kamera
+                                </Button>
+                              </Space>
+                            ) : (
+                              <Space direction="vertical" className="fullscreen-device-picker" size={8}>
+                                <Select
+                                  className="full-width"
+                                  size="small"
+                                  value={selectedVideoDevice}
+                                  onChange={setSelectedVideoDevice}
+                                  options={
+                                    availableDevices.video.length > 0
+                                      ? availableDevices.video.map((d) => ({
+                                          label: d.label || `Kamera ${d.deviceId.slice(0, 8)}`,
+                                          value: d.deviceId,
+                                        }))
+                                      : [{ label: "Kamera default", value: "" }]
+                                  }
+                                />
+                                <Select
+                                  className="full-width"
+                                  size="small"
+                                  value={selectedAudioDevice}
+                                  onChange={setSelectedAudioDevice}
+                                  options={
+                                    availableDevices.audio.length > 0
+                                      ? availableDevices.audio.map((d) => ({
+                                          label: d.label || `Mikrofon ${d.deviceId.slice(0, 8)}`,
+                                          value: d.deviceId,
+                                        }))
+                                      : [{ label: "Mikrofon default", value: "" }]
+                                  }
+                                />
+                                <Space>
+                                  <Button type="primary" size="small" icon={<VideoCameraAddOutlined />} onClick={handleConfirmCam}>
+                                    Nyalakan
+                                  </Button>
+                                  <Button size="small" onClick={() => setShowDevicePicker(false)}>
+                                    Batal
+                                  </Button>
+                                </Space>
+                              </Space>
+                            )
+                          ) : (
+                            <Space wrap className="fullscreen-call-actions">
+                              <Button danger size="small" icon={<PhoneOutlined />} onClick={stopMyCam}>
+                                Matikan Kamera
+                              </Button>
+                              <Button
+                                size="small"
+                                icon={micMuted ? <AudioMutedOutlined /> : <AudioOutlined />}
+                                onClick={toggleMic}
+                                type={micMuted ? "default" : "primary"}
+                              >
+                                {micMuted ? "Unmute" : "Mute"}
+                              </Button>
+                            </Space>
+                          )}
+                          <div className="participant-grid fullscreen-participant-grid">
+                            <ParticipantTile
+                              name={currentUser?.name || "Saya"}
+                              isMe
+                              camActive={camActive}
+                              videoRef={fullscreenLocalVideoRef}
+                            />
+                            {members
+                              .filter((m) => m.id !== currentUser?.id && onlineMembers.has(m.id))
+                              .map((member) => {
+                                const isCamOn = activeCams.has(member.id);
+                                const hasStream = remoteStreams.find((s) => s.userID === member.id);
+                                return (
+                                  <ParticipantTile
+                                    key={member.id}
+                                    name={member.name || "User"}
+                                    role={member.role}
+                                    isCamOn={isCamOn}
+                                    stream={hasStream?.stream}
+                                    audioOutputDevice={selectedAudioOutputDevice}
+                                  />
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        <div className="fullscreen-panel fullscreen-chat-panel">
+                          <Text strong>Chat</Text>
+                          <div className="room-chat-scroll fullscreen-chat-scroll">
+                            {chats.length === 0 ? <Text type="secondary">Belum ada chat</Text> : null}
+                            {chats.map((chat) => {
+                              const chatUserID = chat.user?.id || chat.user_id;
+                              const isMine = chatUserID && currentUser?.id && chatUserID === currentUser.id;
+                              return (
+                                <div
+                                  key={chat.id || `${chatUserID}-${chat.created_at}`}
+                                  className={`chat-bubble-row ${isMine ? "mine" : "other"}`}
+                                >
+                                  <div className="chat-bubble">
+                                    <Text strong className="chat-user">
+                                      {chat.user?.name || chat.user_id || "User"}
+                                    </Text>
+                                    <Paragraph className="chat-message">{chat.message}</Paragraph>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <Form form={fullscreenChatForm} onFinish={handleSendChat} className="chat-form">
+                            <Space.Compact className="full-width">
+                              <Form.Item name="message" noStyle>
+                                <Input placeholder="Tulis chat..." />
+                              </Form.Item>
+                              <Button type="primary" htmlType="submit" icon={<SendOutlined />}>
+                                Kirim
+                              </Button>
+                            </Space.Compact>
+                          </Form>
+                        </div>
+                      </div>
                     </div>
                   ) : null}
                 </div>
@@ -1824,16 +2067,7 @@ export default function RoomDetailPage() {
                 className="dashboard-card participant-card"
                 title={`Video Call ${camActive ? "(Kamera ON)" : ""}`}
                 size="small"
-                extra={
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={showVideoPanel ? <CompressOutlined /> : <ExpandOutlined />}
-                    onClick={() => setShowVideoPanel((v) => !v)}
-                  />
-                }
               >
-                {showVideoPanel ? (
                 <Space orientation="vertical" className="full-width">
                   {!camActive ? (
                     !showDevicePicker ? (
@@ -1961,12 +2195,12 @@ export default function RoomDetailPage() {
                             role={member.role}
                             isCamOn={isCamOn}
                             stream={hasStream?.stream}
+                            audioOutputDevice={selectedAudioOutputDevice}
                           />
                         );
                       })}
                   </div>
                 </Space>
-                ) : null}
               </Card>
 
               <Card
@@ -1974,17 +2208,7 @@ export default function RoomDetailPage() {
                 className="dashboard-card"
                 title="Chat"
                 size="small"
-                extra={
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={showChatPanel ? <CompressOutlined /> : <ExpandOutlined />}
-                    onClick={() => setShowChatPanel((v) => !v)}
-                  />
-                }
               >
-                {showChatPanel ? (
-                <>
                 <div className="room-chat-scroll">
                   {chats.length === 0 ? (
                     <Text type="secondary">Belum ada chat</Text>
@@ -2034,8 +2258,6 @@ export default function RoomDetailPage() {
                     </Button>
                   </Space.Compact>
                 </Form>
-                </>
-                ) : null}
               </Card>
             </div>
           </Col>
@@ -2047,9 +2269,9 @@ export default function RoomDetailPage() {
         open={joinGateOpen}
         centered
         closable={false}
-        maskClosable={false}
+        mask={{ closable: false }}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={joinGateForm} layout="vertical" onFinish={handleJoinGate} requiredMark={false}>
           <Form.Item label="Kode Room">
@@ -2086,6 +2308,7 @@ function ParticipantTile({
   isCamOn = false,
   stream,
   videoRef,
+  audioOutputDevice,
 }) {
   const remoteRef = useRef(null);
 
@@ -2093,9 +2316,12 @@ function ParticipantTile({
     if (remoteRef.current && stream) {
       remoteRef.current.srcObject = stream;
       remoteRef.current.volume = 1.0;
+      if (audioOutputDevice && typeof remoteRef.current.setSinkId === "function") {
+        remoteRef.current.setSinkId(audioOutputDevice).catch(() => {});
+      }
       remoteRef.current.play().catch(() => {});
     }
-  }, [stream]);
+  }, [stream, audioOutputDevice]);
 
   useEffect(() => {
     const el = remoteRef.current;
@@ -2127,6 +2353,7 @@ function ParticipantTile({
           autoPlay
           muted
           playsInline
+          onLoadedMetadata={(event) => event.currentTarget.play().catch(() => {})}
         />
         <Text className="participant-name-overlay">{name} (Anda)</Text>
       </div>

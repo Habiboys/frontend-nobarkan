@@ -435,6 +435,7 @@ a {
   object-fit: contain;
   background: #000;
   outline: none;
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1), margin 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .video-wrapper:fullscreen {
@@ -450,6 +451,161 @@ a {
   width: 100%;
   height: 100%;
   max-height: none;
+}
+
+.fullscreen-join-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: auto;
+}
+
+.fullscreen-join-modal {
+  display: flex;
+  width: min(360px, calc(100% - 32px));
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+
+.fullscreen-join-modal .ant-typography {
+  margin: 0 !important;
+}
+
+.video-wrapper:not(:fullscreen) .fullscreen-side-drawer {
+  display: none;
+}
+
+.fullscreen-side-drawer {
+  --fullscreen-drawer-width: min(420px, 38vw);
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 75;
+  width: var(--fullscreen-drawer-width);
+  transform: translateX(calc(100% - 2px));
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  contain: layout paint;
+  pointer-events: auto;
+}
+
+.fullscreen-side-drawer:hover,
+.fullscreen-side-drawer:focus-within {
+  transform: translateX(0);
+}
+
+.video-wrapper:fullscreen:has(.fullscreen-side-drawer:hover) .room-video,
+.video-wrapper:fullscreen:has(.fullscreen-side-drawer:focus-within) .room-video {
+  width: calc(100% - min(420px, 38vw));
+  margin-right: min(420px, 38vw);
+}
+
+.video-wrapper:fullscreen:has(.fullscreen-side-drawer:hover) .video-controls,
+.video-wrapper:fullscreen:has(.fullscreen-side-drawer:focus-within) .video-controls {
+  right: calc(min(420px, 38vw) + 22px);
+}
+
+.fullscreen-drawer-handle {
+  position: absolute;
+  top: 50%;
+  left: -22px;
+  z-index: 2;
+  display: grid;
+  width: 22px;
+  height: 44px;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 24px;
+  line-height: 1;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transform: translateY(-50%);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.65);
+}
+
+.fullscreen-drawer-content {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 12px;
+  color: #fff;
+  background: rgba(8, 13, 24, 0.7);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px) saturate(115%);
+}
+
+.fullscreen-panel {
+  overflow: hidden;
+  padding: 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  pointer-events: auto;
+}
+
+.fullscreen-video-panel {
+  display: flex;
+  max-height: 44%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.fullscreen-call-actions,
+.fullscreen-device-picker {
+  margin-top: 8px;
+}
+
+.fullscreen-device-picker .ant-select-selector,
+.fullscreen-device-picker .ant-btn {
+  font-size: 12px;
+}
+
+.fullscreen-chat-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.fullscreen-participant-grid {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.fullscreen-chat-scroll {
+  max-height: none;
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .fullscreen-side-drawer {
+    --fullscreen-drawer-width: min(360px, 86vw);
+  }
+
+  .video-wrapper:fullscreen:has(.fullscreen-side-drawer:hover) .room-video,
+  .video-wrapper:fullscreen:has(.fullscreen-side-drawer:focus-within) .room-video {
+    width: calc(100% - min(360px, 86vw));
+    margin-right: min(360px, 86vw);
+  }
+
+  .video-wrapper:fullscreen:has(.fullscreen-side-drawer:hover) .video-controls,
+  .video-wrapper:fullscreen:has(.fullscreen-side-drawer:focus-within) .video-controls {
+    right: calc(min(360px, 86vw) + 12px);
+  }
 }
 
 .video-controls {
@@ -469,7 +625,7 @@ a {
   pointer-events: none;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
   backdrop-filter: blur(14px) saturate(120%);
-  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1), transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), background 0.32s ease;
+  transition: opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1), transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), background 0.32s ease, right 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .video-wrapper.show-controls .video-controls,

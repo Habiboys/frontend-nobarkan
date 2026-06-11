@@ -85,7 +85,7 @@ export default function AppLayout({ children }) {
           </Space>
         }
         placement="right"
-        width={280}
+        size="default"
         open={mobileMenuOpen}
         onClose={closeMobileMenu}
         className="mobile-nav-drawer"

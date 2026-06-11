@@ -3,7 +3,8 @@ import { API_BASE_URL } from './api'
 function getWebSocketURL() {
   const apiURL = new URL(API_BASE_URL)
   const protocol = apiURL.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${apiURL.host}${apiURL.pathname.replace(/\/$/, '')}/ws`
+  const pathname = apiURL.pathname.replace(/\/+/g, '/').replace(/\/$/, '')
+  return `${protocol}//${apiURL.host}${pathname}/ws`
 }
 
 class RoomSocket {
