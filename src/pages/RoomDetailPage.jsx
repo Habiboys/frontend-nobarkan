@@ -42,6 +42,14 @@ function formatSeconds(seconds = 0) {
   return `${minutes}:${rest}`
 }
 
+function formatBytes(bytes = 0) {
+  const value = Number(bytes) || 0
+  if (value < 1024) return `${value} B`
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`
+  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`
+  return `${(value / 1024 ** 3).toFixed(2)} GB`
+}
+
 function getApiOrigin() {
   try {
     return new URL(API_BASE_URL).origin
@@ -142,6 +150,7 @@ export default function RoomDetailPage() {
   const [videoError, setVideoError] = useState('')
   const [driveError, setDriveError] = useState(null)
   const [cacheStatus, setCacheStatus] = useState(null)
+  const [cacheProgress, setCacheProgress] = useState(null)
   const [videoRetryKey, setVideoRetryKey] = useState(0)
   const videoWrapperRef = useRef(null)
   const videoRef = useRef(null)
@@ -914,13 +923,15 @@ export default function RoomDetailPage() {
           videoRetryCountRef.current = 0
           videoErrorRef.current = false
           setCacheStatus('ready')
+          setCacheProgress(null)
           setDriveError(null)
           setVideoError('')
           return
         }
         if (nextStatus === 'downloading') {
           setCacheStatus('downloading')
-          timer = setTimeout(checkDriveCache, 5000)
+          setCacheProgress(body?.progress || null)
+          timer = setTimeout(checkDriveCache, 3000)
           return
         }
         const normalized = normalizeDriveError(body?.error || { code: 'drive_proxy_failed' })
@@ -1229,7 +1240,9 @@ export default function RoomDetailPage() {
                   <Title level={3}>{isCacheDownloading ? 'Mendownload film ke server...' : 'Google Drive Video'}</Title>
                   <Paragraph>
                     {isCacheDownloading
-                        ? 'Klik "Muat Ulang Video" untuk mencoba memuat, atau buka langsung di Google Drive:'
+                        ? cacheProgress?.downloaded
+                          ? `Download berjalan: ${formatBytes(cacheProgress.downloaded)}${cacheProgress.total ? ` / ${formatBytes(cacheProgress.total)} (${Math.round((cacheProgress.downloaded / cacheProgress.total) * 100)}%)` : ''}`
+                          : 'Server sedang mulai download film dari Google Drive. Progress akan muncul sebentar lagi.'
                         : 'Pilih movie Google Drive agar video tampil.'}
                   </Paragraph>
                   <Space wrap>

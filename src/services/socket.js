@@ -10,18 +10,45 @@ class RoomSocket {
   constructor() {
     this.ws = null
     this.listeners = new Map()
+    this.token = null
+    this.reconnectTimer = null
+    this.reconnectAttempts = 0
+    this.intentionalClose = false
   }
 
   connect(token) {
-    this.disconnect()
+    this.token = token
+    this.intentionalClose = false
+    this.clearReconnectTimer()
+    this.closeCurrentSocket()
+    this.openSocket()
+    return this.ws
+  }
 
-    const wsURL = `${getWebSocketURL()}?token=${encodeURIComponent(token)}`
-    this.ws = new WebSocket(wsURL)
+  openSocket() {
+    if (!this.token) return null
 
-    this.ws.onopen = () => this.emit('socket:open', {})
-    this.ws.onclose = (event) => this.emit('socket:close', event)
-    this.ws.onerror = (event) => this.emit('socket:error', event)
-    this.ws.onmessage = (event) => {
+    const wsURL = `${getWebSocketURL()}?token=${encodeURIComponent(this.token)}`
+    const socket = new WebSocket(wsURL)
+    this.ws = socket
+
+    socket.onopen = () => {
+      if (this.ws !== socket) return
+      this.reconnectAttempts = 0
+      this.emit('socket:open', {})
+    }
+
+    socket.onclose = (event) => {
+      if (this.ws !== socket) return
+      this.ws = null
+      this.emit('socket:close', event)
+      if (!this.intentionalClose) {
+        this.scheduleReconnect()
+      }
+    }
+
+    socket.onerror = (event) => this.emit('socket:error', event)
+    socket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data)
         if (message?.type) {
@@ -32,7 +59,34 @@ class RoomSocket {
       }
     }
 
-    return this.ws
+    return socket
+  }
+
+  scheduleReconnect() {
+    this.clearReconnectTimer()
+    const delay = Math.min(10000, 1000 * 2 ** this.reconnectAttempts)
+    this.reconnectAttempts += 1
+    this.reconnectTimer = setTimeout(() => {
+      if (!this.intentionalClose) {
+        this.openSocket()
+      }
+    }, delay)
+  }
+
+  clearReconnectTimer() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  closeCurrentSocket() {
+    if (!this.ws) return
+    const socket = this.ws
+    this.ws = null
+    if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+      socket.close()
+    }
   }
 
   on(type, callback) {
@@ -60,13 +114,10 @@ class RoomSocket {
   }
 
   disconnect() {
-    if (this.ws) {
-      const socket = this.ws
-      this.ws = null
-      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
-        socket.close()
-      }
-    }
+    this.intentionalClose = true
+    this.token = null
+    this.clearReconnectTimer()
+    this.closeCurrentSocket()
   }
 }
 

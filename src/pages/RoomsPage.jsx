@@ -25,6 +25,8 @@ export default function RoomsPage() {
   const [createForm] = Form.useForm()
   const [joinForm] = Form.useForm()
   const [editForm] = Form.useForm()
+  const createIsPrivate = Form.useWatch('is_private', createForm)
+  const editIsPrivate = Form.useWatch('is_private', editForm)
   const navigate = useNavigate()
   const currentUser = getUser()
 
@@ -86,11 +88,13 @@ export default function RoomsPage() {
   }, [])
 
   const handleCreateRoom = async (values) => {
+    const isPrivate = !!values.is_private
     const payload = {
       ...values,
+      is_private: isPrivate,
       movie_id: values.movie_id || null,
       mode: 'gdrive',
-      password: values.password || null,
+      password: isPrivate ? (values.password || null) : null,
       max_members: values.max_members || 10,
     }
 
@@ -125,10 +129,11 @@ export default function RoomsPage() {
     setSubmitting(true)
     try {
       const code = getRoomCode(editingRoom)
+      const isPrivate = !!values.is_private
       await updateRoom(code, {
         name: values.name || undefined,
-        is_private: values.is_private,
-        password: values.password || null,
+        is_private: isPrivate,
+        password: isPrivate ? (values.password || null) : null,
         max_members: values.max_members || 10,
       })
       setEditOpen(false)
@@ -284,8 +289,12 @@ export default function RoomsPage() {
           <Form.Item label="Private" name="is_private" valuePropName="checked">
             <Switch checkedChildren="Private" unCheckedChildren="Public" />
           </Form.Item>
-          <Form.Item label="Password room" name="password">
-            <Input.Password placeholder="Isi jika room private" />
+          <Form.Item
+            label="Password room"
+            name="password"
+            rules={createIsPrivate ? [{ required: true, message: 'Password wajib diisi untuk private room' }] : []}
+          >
+            <Input.Password disabled={!createIsPrivate} placeholder={createIsPrivate ? 'Password private room' : 'Tidak perlu password untuk public room'} />
           </Form.Item>
           <Form.Item label="Maksimal member" name="max_members">
             <InputNumber className="full-width" min={2} max={100} />
@@ -304,8 +313,12 @@ export default function RoomsPage() {
           <Form.Item label="Private" name="is_private" valuePropName="checked">
             <Switch checkedChildren="Private" unCheckedChildren="Public" />
           </Form.Item>
-          <Form.Item label="Password baru" name="password">
-            <Input.Password placeholder="Kosongkan jika tidak ingin ganti password" />
+          <Form.Item
+            label="Password baru"
+            name="password"
+            rules={editIsPrivate && !editingRoom?.is_private ? [{ required: true, message: 'Password wajib diisi untuk private room' }] : []}
+          >
+            <Input.Password disabled={!editIsPrivate} placeholder={editIsPrivate ? 'Kosongkan jika tidak ingin ganti password' : 'Public room tidak memakai password'} />
           </Form.Item>
           <Form.Item label="Maksimal member" name="max_members">
             <InputNumber className="full-width" min={2} max={100} />
