@@ -112,12 +112,15 @@ export default function RoomsPage() {
   }
 
   const handleJoinRoom = async (values) => {
+    setError('')
     setSubmitting(true)
     try {
-      await joinRoom(values.code, { password: values.password || null })
+      const code = String(values.code || '').trim().toUpperCase()
+      await joinRoom(code, { password: values.password || null })
+      setError('')
       setJoinOpen(false)
       joinForm.resetFields()
-      navigate(`/rooms/${values.code}`)
+      navigate(`/rooms/${code}`)
     } catch (err) {
       setError(getApiErrorMessage(err, 'Gagal join room'))
     } finally {

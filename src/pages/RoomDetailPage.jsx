@@ -560,12 +560,23 @@ export default function RoomDetailPage() {
       setOnlineMembers((current) => {
         const next = new Set(current)
         if (currentUser?.id) next.add(currentUser.id)
-        // Mark all existing members as online when socket connects
-        for (const m of membersRef.current) {
-          if (m.id) next.add(m.id)
-        }
         return next
       })
+
+      getRoom(code).then((roomData) => {
+        if (!roomData) return
+        setRoom(roomData)
+        setMembers(roomData.members ?? [])
+        membersRef.current = roomData.members ?? []
+        setOnlineMembers((current) => {
+          const next = new Set(current)
+          for (const m of roomData.members ?? []) {
+            if (m.id) next.add(m.id)
+          }
+          return next
+        })
+      }).catch(() => {})
+
       const hostId = (roomRef.current?.host?.id || roomRef.current?.host_id)
       if (hostId !== currentUser?.id) {
         setTimeout(() => roomSocket.send('player:request_sync'), 250)
