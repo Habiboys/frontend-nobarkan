@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons'
 import { Button, Card, Col, Layout, Row, Space, Typography } from 'antd'
 import { Link } from 'react-router-dom'
+import { isAuthenticated } from '../stores/authStore'
 
 const { Header, Content, Footer } = Layout
 const { Paragraph, Title, Text } = Typography
@@ -36,6 +37,8 @@ const features = [
 ]
 
 export default function LandingPage() {
+  const loggedIn = isAuthenticated()
+
   return (
     <Layout className="marketing-shell">
       <Header className="marketing-header">
@@ -48,12 +51,20 @@ export default function LandingPage() {
           </Space>
         </Link>
         <Space>
-          <Link to="/login">
-            <Button>Masuk</Button>
-          </Link>
-          <Link to="/register">
-            <Button type="primary">Daftar</Button>
-          </Link>
+          {loggedIn ? (
+            <Link to="/dashboard">
+              <Button type="primary">Dashboard</Button>
+            </Link>
+          ) : (
+            <>
+              <Link to="/login">
+                <Button>Masuk</Button>
+              </Link>
+              <Link to="/register">
+                <Button type="primary">Daftar</Button>
+              </Link>
+            </>
+          )}
         </Space>
       </Header>
 
@@ -74,14 +85,24 @@ export default function LandingPage() {
                   undang teman, ngobrol, dan aktifkan video call berbasis WebRTC saat dibutuhkan.
                 </Paragraph>
                 <Space size={12} wrap>
-                  <Link to="/register">
-                    <Button type="primary" size="large" icon={<RocketOutlined />}>
-                      Mulai sekarang
-                    </Button>
-                  </Link>
-                  <Link to="/login">
-                    <Button size="large">Saya sudah punya akun</Button>
-                  </Link>
+                  {loggedIn ? (
+                    <Link to="/dashboard">
+                      <Button type="primary" size="large" icon={<RocketOutlined />}>
+                        Buka dashboard
+                      </Button>
+                    </Link>
+                  ) : (
+                    <>
+                      <Link to="/register">
+                        <Button type="primary" size="large" icon={<RocketOutlined />}>
+                          Mulai sekarang
+                        </Button>
+                      </Link>
+                      <Link to="/login">
+                        <Button size="large">Saya sudah punya akun</Button>
+                      </Link>
+                    </>
+                  )}
                 </Space>
               </Space>
             </Col>

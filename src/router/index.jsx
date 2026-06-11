@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import ProtectedRoute from '../components/ProtectedRoute'
+import PublicRoute from '../components/PublicRoute'
 import DashboardPage from '../pages/DashboardPage'
 import LandingPage from '../pages/LandingPage'
 import LoginPage from '../pages/LoginPage'
@@ -15,12 +16,17 @@ const router = createBrowserRouter([
     element: <LandingPage />,
   },
   {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    path: '/register',
-    element: <RegisterPage />,
+    element: <PublicRoute />,
+    children: [
+      {
+        path: '/login',
+        element: <LoginPage />,
+      },
+      {
+        path: '/register',
+        element: <RegisterPage />,
+      },
+    ],
   },
   {
     element: <ProtectedRoute />,
