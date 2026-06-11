@@ -27,6 +27,7 @@ import {
   Form,
   Input,
   Modal,
+  notification,
   Popconfirm,
   Row,
   Select,
@@ -214,6 +215,8 @@ export default function RoomDetailPage() {
   const [joinGateOpen, setJoinGateOpen] = useState(false);
   const [joinGateLoading, setJoinGateLoading] = useState(false);
   const [joinGateForm] = Form.useForm();
+  const [showVideoPanel, setShowVideoPanel] = useState(true);
+  const [showChatPanel, setShowChatPanel] = useState(true);
   const videoWrapperRef = useRef(null);
   const videoRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -904,20 +907,28 @@ export default function RoomDetailPage() {
       // Notify host to pause & play so member syncs correctly
       const hostId = roomRef.current?.host?.id || roomRef.current?.host_id;
       if (member.id !== currentUser?.id && hostId === currentUser?.id) {
-        Modal.info({
-          title: `${member.name || member.username || "Member"} bergabung`,
-          content: "Pause lalu play lagi supaya video member tersinkron.",
-          centered: true,
-          okText: "Lanjutkan",
-          autoFocusButton: "ok",
-          onOk: () => {
-            roomSocket.send("player:play", {
-              current_time: videoRef.current?.currentTime || 0,
-              is_playing: true,
-              sent_at: Date.now(),
-            });
-            if (videoRef.current) videoRef.current.play().catch(() => {});
-          },
+        notification.info({
+          message: `${member.name || member.username || "Member"} bergabung`,
+          description: "Klik Lanjutkan untuk menyinkronkan video member.",
+          placement: "topRight",
+          duration: 0,
+          btn: (
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => {
+                notification.destroy();
+                roomSocket.send("player:play", {
+                  current_time: videoRef.current?.currentTime || 0,
+                  is_playing: true,
+                  sent_at: Date.now(),
+                });
+                if (videoRef.current) videoRef.current.play().catch(() => {});
+              }}
+            >
+              Lanjutkan
+            </Button>
+          ),
         });
       }
     };
@@ -1813,7 +1824,16 @@ export default function RoomDetailPage() {
                 className="dashboard-card participant-card"
                 title={`Video Call ${camActive ? "(Kamera ON)" : ""}`}
                 size="small"
+                extra={
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={showVideoPanel ? <CompressOutlined /> : <ExpandOutlined />}
+                    onClick={() => setShowVideoPanel((v) => !v)}
+                  />
+                }
               >
+                {showVideoPanel ? (
                 <Space orientation="vertical" className="full-width">
                   {!camActive ? (
                     !showDevicePicker ? (
@@ -1946,6 +1966,7 @@ export default function RoomDetailPage() {
                       })}
                   </div>
                 </Space>
+                ) : null}
               </Card>
 
               <Card
@@ -1953,7 +1974,17 @@ export default function RoomDetailPage() {
                 className="dashboard-card"
                 title="Chat"
                 size="small"
+                extra={
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={showChatPanel ? <CompressOutlined /> : <ExpandOutlined />}
+                    onClick={() => setShowChatPanel((v) => !v)}
+                  />
+                }
               >
+                {showChatPanel ? (
+                <>
                 <div className="room-chat-scroll">
                   {chats.length === 0 ? (
                     <Text type="secondary">Belum ada chat</Text>
@@ -2003,6 +2034,8 @@ export default function RoomDetailPage() {
                     </Button>
                   </Space.Compact>
                 </Form>
+                </>
+                ) : null}
               </Card>
             </div>
           </Col>
