@@ -227,6 +227,8 @@ export default function RoomDetailPage() {
   const pendingIceRef = useRef({});
   const roomRef = useRef(null);
   const lastSyncRef = useRef(null);
+  const restartCooldownsRef = useRef({});
+  const answerTimerRef = useRef({});
 
   // Keep roomRef in sync with latest room state so socket callbacks always see current value
   useEffect(() => {
@@ -354,6 +356,38 @@ export default function RoomDetailPage() {
     }
   }
 
+  // Auto-restart ICE when connection fails
+  async function restartPeerConnection(targetUserID) {
+    const now = Date.now();
+    const last = restartCooldownsRef.current[targetUserID] || 0;
+    if (now - last < 8000) return; // max 1 attempt per 8s per user
+    restartCooldownsRef.current[targetUserID] = now;
+
+    if (peersRef.current[targetUserID]) {
+      // I am the offerer — close + recreate, send new offer
+      peersRef.current[targetUserID].close();
+      delete peersRef.current[targetUserID];
+      delete pendingIceRef.current[targetUserID];
+      const peer = createOutgoingPeer(targetUserID);
+      try {
+        const offer = await peer.createOffer({ iceRestart: true });
+        await peer.setLocalDescription(offer);
+        roomSocket.send("webrtc:offer", {
+          target_user_id: targetUserID,
+          sdp: offer.sdp,
+        });
+      } catch {
+        // error already handled by connectionstatechange
+      }
+    } else if (answerPeersRef.current[targetUserID]) {
+      // I am the answerer — close local, ask remote to restart
+      answerPeersRef.current[targetUserID].close();
+      delete answerPeersRef.current[targetUserID];
+      delete pendingIceRef.current[targetUserID];
+      roomSocket.send("webrtc:restart", { target_user_id: targetUserID });
+    }
+  }
+
   // Create a peer connection where **I am the offerer**
   // local tracks are added automatically if localStreamRef is set
   function createOutgoingPeer(targetUserID) {
@@ -384,31 +418,46 @@ export default function RoomDetailPage() {
       const stream = event.streams?.[0];
       if (!stream) return;
       setRemoteStreams((current) => {
-        if (current.find((item) => item.userID === targetUserID))
-          return current;
-        // Find member name
+        const idx = current.findIndex((item) => item.userID === targetUserID);
+        if (idx >= 0) {
+          const updated = [...current];
+          updated[idx] = { ...updated[idx], stream };
+          return updated;
+        }
         const member = membersRef.current.find((m) => m.id === targetUserID);
         return [
           ...current,
-          {
-            userID: targetUserID,
-            stream,
-            userName: member?.name || targetUserID,
-          },
+          { userID: targetUserID, stream, userName: member?.name || targetUserID },
         ];
       });
     };
 
-    peer.oniceconnectionstatechange = () => {
-      const state = peer.iceConnectionState;
-      if (state === "disconnected" || state === "failed") {
-        setActionError(
-          "Koneksi video terputus. Mungkin perlu konfigurasi STUN/TURN agar akses dari jaringan berbeda.",
-        );
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "connected") {
+        setActionError("");
+      } else if (peer.connectionState === "failed") {
+        setActionError("Koneksi terputus. Mencoba sambungkan ulang...");
+        setTimeout(() => restartPeerConnection(targetUserID), 1500);
       }
     };
 
     peersRef.current[targetUserID] = peer;
+
+    // Connection timeout — auto-restart if not connected within 15s
+    const connTimer = setTimeout(() => {
+      if (peer.connectionState === "connecting" || peer.connectionState === "new") {
+        restartPeerConnection(targetUserID);
+      }
+    }, 15000);
+    // Clear timer on state change that resolves
+    const origStateChange = peer.onconnectionstatechange;
+    peer.onconnectionstatechange = (...args) => {
+      if (peer.connectionState === "connected" || peer.connectionState === "failed") {
+        clearTimeout(connTimer);
+      }
+      origStateChange.apply(peer, args);
+    };
+
     return peer;
   }
 
@@ -578,7 +627,12 @@ export default function RoomDetailPage() {
       const stream = event.streams?.[0];
       if (!stream) return;
       setRemoteStreams((current) => {
-        if (current.find((s) => s.userID === senderID)) return current;
+        const idx = current.findIndex((s) => s.userID === senderID);
+        if (idx >= 0) {
+          const updated = [...current];
+          updated[idx] = { ...updated[idx], stream };
+          return updated;
+        }
         const member = membersRef.current.find((m) => m.id === senderID);
         return [
           ...current,
@@ -591,16 +645,25 @@ export default function RoomDetailPage() {
       });
     };
 
-    peer.oniceconnectionstatechange = () => {
-      if (
-        peer.iceConnectionState === "disconnected" ||
-        peer.iceConnectionState === "failed"
-      ) {
-        setActionError(
-          "Koneksi video terputus. Mungkin perlu konfigurasi STUN/TURN.",
-        );
+    peer.onconnectionstatechange = () => {
+      if (peer.connectionState === "connected") {
+        setActionError("");
+      } else if (peer.connectionState === "failed") {
+        setActionError("Koneksi terputus. Mencoba sambungkan ulang...");
+        clearTimeout(answerTimerRef.current[senderID]);
+        setTimeout(() => restartPeerConnection(senderID), 1500);
       }
     };
+    // Connection timeout — auto-restart if answer peer stalls
+    const timerId = setTimeout(() => {
+      const p = answerPeersRef.current[senderID];
+      if (p && (p.connectionState === "connecting" || p.connectionState === "new")) {
+        restartPeerConnection(senderID);
+      }
+    }, 15000);
+    // clear old timer for this user if any
+    if (answerTimerRef.current[senderID]) clearTimeout(answerTimerRef.current[senderID]);
+    answerTimerRef.current[senderID] = timerId;
 
     answerPeersRef.current[senderID] = peer;
     await peer.setRemoteDescription({ type: "offer", sdp: payload.sdp });
@@ -625,7 +688,10 @@ export default function RoomDetailPage() {
     const senderID = payload?.sender_user_id;
     if (!senderID || !payload?.candidate) return;
 
-    const candidate = JSON.parse(payload.candidate);
+    const candidate =
+      typeof payload.candidate === "string"
+        ? JSON.parse(payload.candidate)
+        : payload.candidate;
     let peer = peersRef.current[senderID];
     if (!peer) peer = answerPeersRef.current[senderID];
 
@@ -876,6 +942,13 @@ export default function RoomDetailPage() {
     const onOffer = (payload) => handleRemoteOffer(payload);
     const onAnswer = (payload) => handleRemoteAnswer(payload);
     const onIce = (payload) => handleRemoteIce(payload);
+    const onRestart = (payload) => {
+      const targetID = payload?.target_user_id;
+      if (targetID && peersRef.current[targetID]) {
+        // Remote asked me (the offerer) to restart
+        setTimeout(() => restartPeerConnection(targetID), 500);
+      }
+    };
 
     roomSocket.on("socket:open", onOpen);
     roomSocket.on("socket:close", onClose);
@@ -889,6 +962,7 @@ export default function RoomDetailPage() {
     roomSocket.on("webrtc:offer", onOffer);
     roomSocket.on("webrtc:answer", onAnswer);
     roomSocket.on("webrtc:ice", onIce);
+    roomSocket.on("webrtc:restart", onRestart);
 
     connectSocket();
 
@@ -906,6 +980,7 @@ export default function RoomDetailPage() {
       roomSocket.off("webrtc:offer", onOffer);
       roomSocket.off("webrtc:answer", onAnswer);
       roomSocket.off("webrtc:ice", onIce);
+      roomSocket.off("webrtc:restart", onRestart);
       roomSocket.disconnect();
       if (videoRetryTimerRef.current) clearTimeout(videoRetryTimerRef.current);
       stopCall();
