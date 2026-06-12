@@ -13,6 +13,7 @@ import {
   PlayCircleOutlined,
   ReloadOutlined,
   SendOutlined,
+  SettingOutlined,
   SoundOutlined,
   VideoCameraAddOutlined,
 } from "@ant-design/icons";
@@ -208,6 +209,7 @@ export default function RoomDetailPage() {
   const [selectedAudioDevice, setSelectedAudioDevice] = useState("");
   const [selectedAudioOutputDevice, setSelectedAudioOutputDevice] = useState("");
   const [micSettings, setMicSettings] = useState(null);
+  const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const currentUser = getUser();
   const [videoError, setVideoError] = useState("");
@@ -551,7 +553,11 @@ export default function RoomDetailPage() {
       try {
         const tempStream = await navigator.mediaDevices.getUserMedia({
           video: true,
-          audio: false,
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
         });
         // Stop temporary stream immediately — we only needed it for permission
         tempStream.getTracks().forEach((track) => track.stop());
@@ -1237,12 +1243,24 @@ export default function RoomDetailPage() {
       is_playing: isPlaying,
       sent_at: sentAt,
     });
+
+    const newStatus = isPlaying ? "playing" : "paused";
     setPlayerState({
       current_time: currentTime,
       is_playing: isPlaying,
       user_name: currentUser?.name || "Saya",
       sent_at: sentAt,
     });
+    setRoom((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: newStatus,
+            is_playing: isPlaying,
+            current_time: currentTime,
+          }
+        : prev,
+    );
 
     if (videoRef.current) {
       if (isPlaying) {
@@ -1550,6 +1568,7 @@ export default function RoomDetailPage() {
     navigate("/movies");
   };
 
+  const currentMovieTitle = movie?.title || "Belum ada film";
   const showAudioWarning = hasRiskyAudioDevice() || micProcessingEnabled();
   const selectedAudioInputLabel = getSelectedAudioInputLabel();
   const selectedAudioOutputLabel = getSelectedAudioOutputLabel();
@@ -1577,6 +1596,7 @@ export default function RoomDetailPage() {
               <Tag color={getRoomStatusColor(room?.status)}>
                 {getRoomStatusLabel(room?.status)}
               </Tag>
+              <Tag color={movie ? "purple" : "default"}>Film: {currentMovieTitle}</Tag>
             </Space>
           </div>
           <Space wrap>
@@ -1808,34 +1828,20 @@ export default function RoomDetailPage() {
                           min={0}
                           max={1}
                           step={0.05}
-                          tooltip={{
-                            formatter: (value) =>
-                              `${Math.round((value || 0) * 100)}%`,
-                          }}
+                          tooltip={false}
                           value={videoVolume}
                           onChange={handleVolumeChange}
                         />
-                        <div className="video-output-field">
-                          <Text className="video-output-label">Output Film / Speaker</Text>
-                          {availableDevices.audioOutput.length > 0 && supportsAudioOutputSelection ? (
-                            <Select
-                              className="video-output-select"
-                              size="small"
-                              value={selectedAudioOutputDevice}
-                              onChange={handleAudioOutputChange}
-                              options={availableDevices.audioOutput.map((d) => ({
-                                label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
-                                value: d.deviceId,
-                              }))}
-                            />
-                          ) : (
-                            <Text className="audio-device-note">
-                              Browser belum mendukung pilih speaker. Pakai Chrome/Edge desktop via HTTPS.
-                            </Text>
-                          )}
-                        </div>
                       </div>
                     </div>
+                    <Button
+                      aria-label="Audio settings"
+                      className="video-icon-button"
+                      icon={<SettingOutlined />}
+                      shape="circle"
+                      ghost
+                      onClick={() => setAudioSettingsOpen(true)}
+                    />
                     <Button
                       aria-label={isFullscreen ? "Minimize" : "Maximize"}
                       className="video-icon-button"
@@ -1855,6 +1861,61 @@ export default function RoomDetailPage() {
                       </Text>
                     </div>
                   ) : null}
+
+                  <Modal
+                    title="Audio Settings"
+                    open={audioSettingsOpen}
+                    footer={null}
+                    onCancel={() => setAudioSettingsOpen(false)}
+                    destroyOnHidden
+                    getContainer={false}
+                  >
+                    <Space direction="vertical" className="full-width" size={12}>
+                      <div className="video-output-field settings-output-field">
+                        <Text strong>Output Film / Speaker</Text>
+                        {availableDevices.audioOutput.length > 0 && supportsAudioOutputSelection ? (
+                          <Select
+                            className="full-width"
+                            value={selectedAudioOutputDevice}
+                            onChange={handleAudioOutputChange}
+                            options={availableDevices.audioOutput.map((d) => ({
+                              label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
+                              value: d.deviceId,
+                            }))}
+                          />
+                        ) : (
+                          <Text type="secondary">
+                            Browser belum mendukung pilih speaker. Pakai Chrome/Edge desktop via HTTPS.
+                          </Text>
+                        )}
+                      </div>
+                      <div className="video-output-field settings-output-field">
+                        <Text strong>Mikrofon</Text>
+                        <Select
+                          className="full-width"
+                          value={selectedAudioDevice}
+                          onChange={setSelectedAudioDevice}
+                          options={
+                            availableDevices.audio.length > 0
+                              ? availableDevices.audio.map((d) => ({
+                                  label: d.label || `Mikrofon ${d.deviceId.slice(0, 8)}`,
+                                  value: d.deviceId,
+                                }))
+                              : [{ label: "Mikrofon default", value: "" }]
+                          }
+                        />
+                      </div>
+                      {showAudioWarning ? (
+                        <Alert
+                          className="audio-device-alert"
+                          type="warning"
+                          showIcon
+                          title="Bluetooth/Hands-Free bisa membuat audio film mendem."
+                          description="Gunakan wired headset, speaker laptop, atau mic terpisah."
+                        />
+                      ) : null}
+                    </Space>
+                  </Modal>
 
                   {fullscreenJoinNotice ? (
                     <div className="fullscreen-join-modal-backdrop">
@@ -2106,6 +2167,12 @@ export default function RoomDetailPage() {
                   size="small"
                 >
                   <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Film">
+                      <Space direction="vertical" size={2}>
+                        <Text strong>{currentMovieTitle}</Text>
+                        {movie?.source_type ? <Tag>{movie.source_type}</Tag> : null}
+                      </Space>
+                    </Descriptions.Item>
                     <Descriptions.Item label="Mode">
                       <Tag>{room?.mode || "-"}</Tag>
                     </Descriptions.Item>
