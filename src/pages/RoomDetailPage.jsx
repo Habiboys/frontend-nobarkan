@@ -210,6 +210,7 @@ export default function RoomDetailPage() {
   const [selectedAudioOutputDevice, setSelectedAudioOutputDevice] = useState("");
   const [micSettings, setMicSettings] = useState(null);
   const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const currentUser = getUser();
   const [videoError, setVideoError] = useState("");
@@ -1940,9 +1941,20 @@ export default function RoomDetailPage() {
                     </div>
                   ) : null}
 
-                  {isFullscreen ? (
-                    <div className="fullscreen-side-drawer">
-                      <div className="fullscreen-drawer-handle">‹</div>
+                  <div className={`fullscreen-side-drawer ${mobilePanelOpen ? "drawer-expanded" : ""}`}>
+                      <div
+                        className="fullscreen-drawer-handle"
+                        tabIndex={0}
+                        role="button"
+                        aria-label={mobilePanelOpen ? "Tutup panel" : "Buka panel"}
+                        onClick={() => setMobilePanelOpen((prev) => !prev)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setMobilePanelOpen((prev) => !prev);
+                          }
+                        }}
+                      >‹</div>
                       <div className="fullscreen-drawer-content">
                         <div className="fullscreen-panel fullscreen-video-panel">
                           <Text strong>Video Call</Text>
@@ -2101,11 +2113,10 @@ export default function RoomDetailPage() {
                               </Button>
                             </Space.Compact>
                           </Form>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                        </div>  
+                      </div>  
+                    </div>  
+                </div>  // video-wrapper parent
               ) : (
                 <div className="room-player-placeholder">
                   {isCacheDownloading ? (
