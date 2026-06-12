@@ -81,17 +81,27 @@ function formatBytes(bytes = 0) {
 
 function sanitizeICEServers(servers) {
   if (!Array.isArray(servers)) return [];
-  return servers.map((entry) => {
-    const urls = Array.isArray(entry?.urls) ? entry.urls : typeof entry?.urls === 'string' ? [entry.urls] : []
-    // If entry has turn/turns URL but missing username or credential, remove those URLs
-    const needsCreds = urls.some((u) => u.startsWith('turn:') || u.startsWith('turns:'))
-    if (needsCreds && (!entry.username || !entry.credential)) {
-      // Keep only STUN URLs from this entry
-      const stunOnly = urls.filter((u) => u.startsWith('stun:') || u.startsWith('stuns:'))
-      return stunOnly.length > 0 ? { urls: stunOnly } : null
-    }
-    return entry
-  }).filter(Boolean)
+  return servers
+    .map((entry) => {
+      const urls = Array.isArray(entry?.urls)
+        ? entry.urls
+        : typeof entry?.urls === "string"
+          ? [entry.urls]
+          : [];
+      // If entry has turn/turns URL but missing username or credential, remove those URLs
+      const needsCreds = urls.some(
+        (u) => u.startsWith("turn:") || u.startsWith("turns:"),
+      );
+      if (needsCreds && (!entry.username || !entry.credential)) {
+        // Keep only STUN URLs from this entry
+        const stunOnly = urls.filter(
+          (u) => u.startsWith("stun:") || u.startsWith("stuns:"),
+        );
+        return stunOnly.length > 0 ? { urls: stunOnly } : null;
+      }
+      return entry;
+    })
+    .filter(Boolean);
 }
 
 function getApiOrigin() {
@@ -207,10 +217,10 @@ export default function RoomDetailPage() {
   });
   const [selectedVideoDevice, setSelectedVideoDevice] = useState("");
   const [selectedAudioDevice, setSelectedAudioDevice] = useState("");
-  const [selectedAudioOutputDevice, setSelectedAudioOutputDevice] = useState("");
+  const [selectedAudioOutputDevice, setSelectedAudioOutputDevice] =
+    useState("");
   const [micSettings, setMicSettings] = useState(null);
   const [audioSettingsOpen, setAudioSettingsOpen] = useState(false);
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const currentUser = getUser();
   const [videoError, setVideoError] = useState("");
@@ -322,7 +332,9 @@ export default function RoomDetailPage() {
           is_playing: roomData.is_playing ?? false,
           user_name: "",
         });
-        iceServersRef.current = sanitizeICEServers(rtcConfig?.ice_servers ?? []);
+        iceServersRef.current = sanitizeICEServers(
+          rtcConfig?.ice_servers ?? [],
+        );
         scrollChatDown();
       } catch (err) {
         if (active)
@@ -451,7 +463,11 @@ export default function RoomDetailPage() {
         const member = membersRef.current.find((m) => m.id === targetUserID);
         return [
           ...current,
-          { userID: targetUserID, stream, userName: member?.name || targetUserID },
+          {
+            userID: targetUserID,
+            stream,
+            userName: member?.name || targetUserID,
+          },
         ];
       });
     };
@@ -469,14 +485,20 @@ export default function RoomDetailPage() {
 
     // Connection timeout — auto-restart if not connected within 15s
     const connTimer = setTimeout(() => {
-      if (peer.connectionState === "connecting" || peer.connectionState === "new") {
+      if (
+        peer.connectionState === "connecting" ||
+        peer.connectionState === "new"
+      ) {
         restartPeerConnection(targetUserID);
       }
     }, 15000);
     // Clear timer on state change that resolves
     const origStateChange = peer.onconnectionstatechange;
     peer.onconnectionstatechange = (...args) => {
-      if (peer.connectionState === "connected" || peer.connectionState === "failed") {
+      if (
+        peer.connectionState === "connected" ||
+        peer.connectionState === "failed"
+      ) {
         clearTimeout(connTimer);
       }
       origStateChange.apply(peer, args);
@@ -568,7 +590,9 @@ export default function RoomDetailPage() {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter((d) => d.kind === "videoinput");
       const audioDevices = devices.filter((d) => d.kind === "audioinput");
-      const audioOutputDevices = devices.filter((d) => d.kind === "audiooutput");
+      const audioOutputDevices = devices.filter(
+        (d) => d.kind === "audiooutput",
+      );
       setAvailableDevices({
         video: videoDevices,
         audio: audioDevices,
@@ -613,7 +637,8 @@ export default function RoomDetailPage() {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
-    if (fullscreenLocalVideoRef.current) fullscreenLocalVideoRef.current.srcObject = null;
+    if (fullscreenLocalVideoRef.current)
+      fullscreenLocalVideoRef.current.srcObject = null;
 
     closeAllPeers();
     camActiveRef.current = false;
@@ -630,21 +655,32 @@ export default function RoomDetailPage() {
   ];
 
   const getSelectedAudioInputLabel = () =>
-    availableDevices.audio.find((device) => device.deviceId === selectedAudioDevice)?.label || "";
+    availableDevices.audio.find(
+      (device) => device.deviceId === selectedAudioDevice,
+    )?.label || "";
 
   const getSelectedAudioOutputLabel = () =>
-    availableDevices.audioOutput.find((device) => device.deviceId === selectedAudioOutputDevice)?.label || "";
+    availableDevices.audioOutput.find(
+      (device) => device.deviceId === selectedAudioOutputDevice,
+    )?.label || "";
 
   const isRiskyAudioLabel = (label = "") => {
     const value = label.toLowerCase();
-    return ["bluetooth", "hands-free", "handsfree", "headset"].some((keyword) => value.includes(keyword));
+    return ["bluetooth", "hands-free", "handsfree", "headset"].some((keyword) =>
+      value.includes(keyword),
+    );
   };
 
   const hasRiskyAudioDevice = () =>
-    isRiskyAudioLabel(getSelectedAudioInputLabel()) || isRiskyAudioLabel(getSelectedAudioOutputLabel());
+    isRiskyAudioLabel(getSelectedAudioInputLabel()) ||
+    isRiskyAudioLabel(getSelectedAudioOutputLabel());
 
   const micProcessingEnabled = () =>
-    Boolean(micSettings?.echoCancellation || micSettings?.noiseSuppression || micSettings?.autoGainControl);
+    Boolean(
+      micSettings?.echoCancellation ||
+      micSettings?.noiseSuppression ||
+      micSettings?.autoGainControl,
+    );
 
   async function renegotiatePeersAfterTrackChange() {
     for (const [targetUserID, peer] of getPeerEntries()) {
@@ -660,14 +696,18 @@ export default function RoomDetailPage() {
   async function applySelectedAudioOutput() {
     if (!selectedAudioOutputDevice) return true;
     if (!videoRef.current || typeof videoRef.current.setSinkId !== "function") {
-      setActionError("Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop via HTTPS.");
+      setActionError(
+        "Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop via HTTPS.",
+      );
       return false;
     }
     try {
       await videoRef.current.setSinkId(selectedAudioOutputDevice);
       return true;
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Tidak bisa mengganti output audio film"));
+      setActionError(
+        getApiErrorMessage(err, "Tidak bisa mengganti output audio film"),
+      );
       return false;
     }
   }
@@ -701,13 +741,16 @@ export default function RoomDetailPage() {
       localStreamRef.current.addTrack(audioTrack);
 
       for (const [, peer] of getPeerEntries()) {
-        if (peer.getSenders().some((sender) => sender.track?.kind === "audio")) continue;
+        if (peer.getSenders().some((sender) => sender.track?.kind === "audio"))
+          continue;
         peer.addTrack(audioTrack, localStreamRef.current);
       }
       await renegotiatePeersAfterTrackChange();
       setMicMuted(false);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Tidak bisa mengaktifkan mikrofon"));
+      setActionError(
+        getApiErrorMessage(err, "Tidak bisa mengaktifkan mikrofon"),
+      );
     }
   }
 
@@ -830,12 +873,16 @@ export default function RoomDetailPage() {
     // Connection timeout — auto-restart if answer peer stalls
     const timerId = setTimeout(() => {
       const p = answerPeersRef.current[senderID];
-      if (p && (p.connectionState === "connecting" || p.connectionState === "new")) {
+      if (
+        p &&
+        (p.connectionState === "connecting" || p.connectionState === "new")
+      ) {
         restartPeerConnection(senderID);
       }
     }, 15000);
     // clear old timer for this user if any
-    if (answerTimerRef.current[senderID]) clearTimeout(answerTimerRef.current[senderID]);
+    if (answerTimerRef.current[senderID])
+      clearTimeout(answerTimerRef.current[senderID]);
     answerTimerRef.current[senderID] = timerId;
 
     answerPeersRef.current[senderID] = peer;
@@ -1342,13 +1389,17 @@ export default function RoomDetailPage() {
   const handleAudioOutputChange = async (deviceId) => {
     setSelectedAudioOutputDevice(deviceId);
     if (!videoRef.current || typeof videoRef.current.setSinkId !== "function") {
-      setActionError("Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop via HTTPS.");
+      setActionError(
+        "Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop via HTTPS.",
+      );
       return;
     }
     try {
       await videoRef.current.setSinkId(deviceId);
     } catch (err) {
-      setActionError(getApiErrorMessage(err, "Tidak bisa mengganti output audio film"));
+      setActionError(
+        getApiErrorMessage(err, "Tidak bisa mengganti output audio film"),
+      );
     }
   };
 
@@ -1573,7 +1624,9 @@ export default function RoomDetailPage() {
   const showAudioWarning = hasRiskyAudioDevice() || micProcessingEnabled();
   const selectedAudioInputLabel = getSelectedAudioInputLabel();
   const selectedAudioOutputLabel = getSelectedAudioOutputLabel();
-  const supportsAudioOutputSelection = typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
+  const supportsAudioOutputSelection =
+    typeof HTMLMediaElement !== "undefined" &&
+    "setSinkId" in HTMLMediaElement.prototype;
 
   return (
     <AppLayout>
@@ -1597,7 +1650,9 @@ export default function RoomDetailPage() {
               <Tag color={getRoomStatusColor(room?.status)}>
                 {getRoomStatusLabel(room?.status)}
               </Tag>
-              <Tag color={movie ? "purple" : "default"}>Film: {currentMovieTitle}</Tag>
+              <Tag color={movie ? "purple" : "default"}>
+                Film: {currentMovieTitle}
+              </Tag>
             </Space>
           </div>
           <Space wrap>
@@ -1871,22 +1926,29 @@ export default function RoomDetailPage() {
                     destroyOnHidden
                     getContainer={false}
                   >
-                    <Space direction="vertical" className="full-width" size={12}>
+                    <Space
+                      direction="vertical"
+                      className="full-width"
+                      size={12}
+                    >
                       <div className="video-output-field settings-output-field">
                         <Text strong>Output Film / Speaker</Text>
-                        {availableDevices.audioOutput.length > 0 && supportsAudioOutputSelection ? (
+                        {availableDevices.audioOutput.length > 0 &&
+                        supportsAudioOutputSelection ? (
                           <Select
                             className="full-width"
                             value={selectedAudioOutputDevice}
                             onChange={handleAudioOutputChange}
                             options={availableDevices.audioOutput.map((d) => ({
-                              label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
+                              label:
+                                d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
                               value: d.deviceId,
                             }))}
                           />
                         ) : (
                           <Text type="secondary">
-                            Browser belum mendukung pilih speaker. Pakai Chrome/Edge desktop via HTTPS.
+                            Browser belum mendukung pilih speaker. Pakai
+                            Chrome/Edge desktop via HTTPS.
                           </Text>
                         )}
                       </div>
@@ -1899,7 +1961,9 @@ export default function RoomDetailPage() {
                           options={
                             availableDevices.audio.length > 0
                               ? availableDevices.audio.map((d) => ({
-                                  label: d.label || `Mikrofon ${d.deviceId.slice(0, 8)}`,
+                                  label:
+                                    d.label ||
+                                    `Mikrofon ${d.deviceId.slice(0, 8)}`,
                                   value: d.deviceId,
                                 }))
                               : [{ label: "Mikrofon default", value: "" }]
@@ -1921,8 +1985,12 @@ export default function RoomDetailPage() {
                   {fullscreenJoinNotice ? (
                     <div className="fullscreen-join-modal-backdrop">
                       <div className="fullscreen-join-modal">
-                        <Title level={4}>{fullscreenJoinNotice.name} bergabung</Title>
-                        <Text type="secondary">Klik Lanjutkan untuk sinkron video.</Text>
+                        <Title level={4}>
+                          {fullscreenJoinNotice.name} bergabung
+                        </Title>
+                        <Text type="secondary">
+                          Klik Lanjutkan untuk sinkron video.
+                        </Text>
                         <Button
                           type="primary"
                           onClick={() => {
@@ -1932,7 +2000,8 @@ export default function RoomDetailPage() {
                               is_playing: true,
                               sent_at: Date.now(),
                             });
-                            if (videoRef.current) videoRef.current.play().catch(() => {});
+                            if (videoRef.current)
+                              videoRef.current.play().catch(() => {});
                           }}
                         >
                           Lanjutkan
@@ -1941,20 +2010,9 @@ export default function RoomDetailPage() {
                     </div>
                   ) : null}
 
-                  <div className={`fullscreen-side-drawer ${mobilePanelOpen ? "drawer-expanded" : ""}`}>
-                      <div
-                        className="fullscreen-drawer-handle"
-                        tabIndex={0}
-                        role="button"
-                        aria-label={mobilePanelOpen ? "Tutup panel" : "Buka panel"}
-                        onClick={() => setMobilePanelOpen((prev) => !prev)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setMobilePanelOpen((prev) => !prev);
-                          }
-                        }}
-                      >‹</div>
+                  {isFullscreen ? (
+                    <div className="fullscreen-side-drawer">
+                      <div className="fullscreen-drawer-handle">‹</div>
                       <div className="fullscreen-drawer-content">
                         <div className="fullscreen-panel fullscreen-video-panel">
                           <Text strong>Video Call</Text>
@@ -1971,7 +2029,11 @@ export default function RoomDetailPage() {
                                 </Button>
                               </Space>
                             ) : (
-                              <Space direction="vertical" className="fullscreen-device-picker" size={8}>
+                              <Space
+                                direction="vertical"
+                                className="fullscreen-device-picker"
+                                size={8}
+                              >
                                 <Select
                                   className="full-width"
                                   size="small"
@@ -1980,7 +2042,9 @@ export default function RoomDetailPage() {
                                   options={
                                     availableDevices.video.length > 0
                                       ? availableDevices.video.map((d) => ({
-                                          label: d.label || `Kamera ${d.deviceId.slice(0, 8)}`,
+                                          label:
+                                            d.label ||
+                                            `Kamera ${d.deviceId.slice(0, 8)}`,
                                           value: d.deviceId,
                                         }))
                                       : [{ label: "Kamera default", value: "" }]
@@ -1994,10 +2058,17 @@ export default function RoomDetailPage() {
                                   options={
                                     availableDevices.audio.length > 0
                                       ? availableDevices.audio.map((d) => ({
-                                          label: d.label || `Mikrofon ${d.deviceId.slice(0, 8)}`,
+                                          label:
+                                            d.label ||
+                                            `Mikrofon ${d.deviceId.slice(0, 8)}`,
                                           value: d.deviceId,
                                         }))
-                                      : [{ label: "Mikrofon default", value: "" }]
+                                      : [
+                                          {
+                                            label: "Mikrofon default",
+                                            value: "",
+                                          },
+                                        ]
                                   }
                                 />
                                 {showAudioWarning ? (
@@ -2010,10 +2081,18 @@ export default function RoomDetailPage() {
                                   />
                                 ) : null}
                                 <Space>
-                                  <Button type="primary" size="small" icon={<VideoCameraAddOutlined />} onClick={handleConfirmCam}>
+                                  <Button
+                                    type="primary"
+                                    size="small"
+                                    icon={<VideoCameraAddOutlined />}
+                                    onClick={handleConfirmCam}
+                                  >
                                     Nyalakan
                                   </Button>
-                                  <Button size="small" onClick={() => setShowDevicePicker(false)}>
+                                  <Button
+                                    size="small"
+                                    onClick={() => setShowDevicePicker(false)}
+                                  >
                                     Batal
                                   </Button>
                                 </Space>
@@ -2021,12 +2100,23 @@ export default function RoomDetailPage() {
                             )
                           ) : (
                             <Space wrap className="fullscreen-call-actions">
-                              <Button danger size="small" icon={<PhoneOutlined />} onClick={stopMyCam}>
+                              <Button
+                                danger
+                                size="small"
+                                icon={<PhoneOutlined />}
+                                onClick={stopMyCam}
+                              >
                                 Matikan Kamera
                               </Button>
                               <Button
                                 size="small"
-                                icon={micMuted ? <AudioMutedOutlined /> : <AudioOutlined />}
+                                icon={
+                                  micMuted ? (
+                                    <AudioMutedOutlined />
+                                  ) : (
+                                    <AudioOutlined />
+                                  )
+                                }
                                 onClick={toggleMic}
                                 type={micMuted ? "default" : "primary"}
                               >
@@ -2049,10 +2139,21 @@ export default function RoomDetailPage() {
                           {micSettings ? (
                             <div className="mic-settings-debug">
                               <Text type="secondary">Mic settings</Text>
-                              <Text>EC: {String(micSettings.echoCancellation ?? false)}</Text>
-                              <Text>NS: {String(micSettings.noiseSuppression ?? false)}</Text>
-                              <Text>AGC: {String(micSettings.autoGainControl ?? false)}</Text>
-                              <Text>Channel: {micSettings.channelCount || "-"}</Text>
+                              <Text>
+                                EC:{" "}
+                                {String(micSettings.echoCancellation ?? false)}
+                              </Text>
+                              <Text>
+                                NS:{" "}
+                                {String(micSettings.noiseSuppression ?? false)}
+                              </Text>
+                              <Text>
+                                AGC:{" "}
+                                {String(micSettings.autoGainControl ?? false)}
+                              </Text>
+                              <Text>
+                                Channel: {micSettings.channelCount || "-"}
+                              </Text>
                             </div>
                           ) : null}
                           <div className="participant-grid fullscreen-participant-grid">
@@ -2063,10 +2164,16 @@ export default function RoomDetailPage() {
                               videoRef={fullscreenLocalVideoRef}
                             />
                             {members
-                              .filter((m) => m.id !== currentUser?.id && onlineMembers.has(m.id))
+                              .filter(
+                                (m) =>
+                                  m.id !== currentUser?.id &&
+                                  onlineMembers.has(m.id),
+                              )
                               .map((member) => {
                                 const isCamOn = activeCams.has(member.id);
-                                const hasStream = remoteStreams.find((s) => s.userID === member.id);
+                                const hasStream = remoteStreams.find(
+                                  (s) => s.userID === member.id,
+                                );
                                 return (
                                   <ParticipantTile
                                     key={member.id}
@@ -2074,7 +2181,9 @@ export default function RoomDetailPage() {
                                     role={member.role}
                                     isCamOn={isCamOn}
                                     stream={hasStream?.stream}
-                                    audioOutputDevice={selectedAudioOutputDevice}
+                                    audioOutputDevice={
+                                      selectedAudioOutputDevice
+                                    }
                                   />
                                 );
                               })}
@@ -2084,39 +2193,60 @@ export default function RoomDetailPage() {
                         <div className="fullscreen-panel fullscreen-chat-panel">
                           <Text strong>Chat</Text>
                           <div className="room-chat-scroll fullscreen-chat-scroll">
-                            {chats.length === 0 ? <Text type="secondary">Belum ada chat</Text> : null}
+                            {chats.length === 0 ? (
+                              <Text type="secondary">Belum ada chat</Text>
+                            ) : null}
                             {chats.map((chat) => {
                               const chatUserID = chat.user?.id || chat.user_id;
-                              const isMine = chatUserID && currentUser?.id && chatUserID === currentUser.id;
+                              const isMine =
+                                chatUserID &&
+                                currentUser?.id &&
+                                chatUserID === currentUser.id;
                               return (
                                 <div
-                                  key={chat.id || `${chatUserID}-${chat.created_at}`}
+                                  key={
+                                    chat.id ||
+                                    `${chatUserID}-${chat.created_at}`
+                                  }
                                   className={`chat-bubble-row ${isMine ? "mine" : "other"}`}
                                 >
                                   <div className="chat-bubble">
                                     <Text strong className="chat-user">
-                                      {chat.user?.name || chat.user_id || "User"}
+                                      {chat.user?.name ||
+                                        chat.user_id ||
+                                        "User"}
                                     </Text>
-                                    <Paragraph className="chat-message">{chat.message}</Paragraph>
+                                    <Paragraph className="chat-message">
+                                      {chat.message}
+                                    </Paragraph>
                                   </div>
                                 </div>
                               );
                             })}
                           </div>
-                          <Form form={fullscreenChatForm} onFinish={handleSendChat} className="chat-form">
+                          <Form
+                            form={fullscreenChatForm}
+                            onFinish={handleSendChat}
+                            className="chat-form"
+                          >
                             <Space.Compact className="full-width">
                               <Form.Item name="message" noStyle>
                                 <Input placeholder="Tulis chat..." />
                               </Form.Item>
-                              <Button type="primary" htmlType="submit" icon={<SendOutlined />}>
+                              <Button
+                                type="primary"
+                                htmlType="submit"
+                                icon={<SendOutlined />}
+                              >
                                 Kirim
                               </Button>
                             </Space.Compact>
                           </Form>
-                        </div>  
-                      </div>  
-                    </div>  
-                </div>  // video-wrapper parent
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               ) : (
                 <div className="room-player-placeholder">
                   {isCacheDownloading ? (
@@ -2181,7 +2311,9 @@ export default function RoomDetailPage() {
                     <Descriptions.Item label="Film">
                       <Space direction="vertical" size={2}>
                         <Text strong>{currentMovieTitle}</Text>
-                        {movie?.source_type ? <Tag>{movie.source_type}</Tag> : null}
+                        {movie?.source_type ? (
+                          <Tag>{movie.source_type}</Tag>
+                        ) : null}
                       </Space>
                     </Descriptions.Item>
                     <Descriptions.Item label="Mode">
@@ -2378,9 +2510,15 @@ export default function RoomDetailPage() {
                   {micSettings ? (
                     <div className="mic-settings-debug">
                       <Text type="secondary">Mic settings</Text>
-                      <Text>EC: {String(micSettings.echoCancellation ?? false)}</Text>
-                      <Text>NS: {String(micSettings.noiseSuppression ?? false)}</Text>
-                      <Text>AGC: {String(micSettings.autoGainControl ?? false)}</Text>
+                      <Text>
+                        EC: {String(micSettings.echoCancellation ?? false)}
+                      </Text>
+                      <Text>
+                        NS: {String(micSettings.noiseSuppression ?? false)}
+                      </Text>
+                      <Text>
+                        AGC: {String(micSettings.autoGainControl ?? false)}
+                      </Text>
                       <Text>Channel: {micSettings.channelCount || "-"}</Text>
                     </div>
                   ) : null}
@@ -2487,7 +2625,12 @@ export default function RoomDetailPage() {
         footer={null}
         destroyOnHidden
       >
-        <Form form={joinGateForm} layout="vertical" onFinish={handleJoinGate} requiredMark={false}>
+        <Form
+          form={joinGateForm}
+          layout="vertical"
+          onFinish={handleJoinGate}
+          requiredMark={false}
+        >
           <Form.Item label="Kode Room">
             <Input value={code} disabled />
           </Form.Item>
@@ -2495,14 +2638,19 @@ export default function RoomDetailPage() {
             <Input.Password placeholder="Isi jika room private" />
           </Form.Item>
           <Space direction="vertical" className="full-width">
-            <Button type="primary" htmlType="submit" loading={joinGateLoading} block>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={joinGateLoading}
+              block
+            >
               Gabung
             </Button>
             <Button
               block
               onClick={() => {
                 setJoinGateOpen(false);
-                navigate('/rooms');
+                navigate("/rooms");
               }}
             >
               Batal
@@ -2530,7 +2678,10 @@ function ParticipantTile({
     if (remoteRef.current && stream) {
       remoteRef.current.srcObject = stream;
       remoteRef.current.volume = 1.0;
-      if (audioOutputDevice && typeof remoteRef.current.setSinkId === "function") {
+      if (
+        audioOutputDevice &&
+        typeof remoteRef.current.setSinkId === "function"
+      ) {
         remoteRef.current.setSinkId(audioOutputDevice).catch(() => {});
       }
       remoteRef.current.play().catch(() => {});
@@ -2567,7 +2718,9 @@ function ParticipantTile({
           autoPlay
           muted
           playsInline
-          onLoadedMetadata={(event) => event.currentTarget.play().catch(() => {})}
+          onLoadedMetadata={(event) =>
+            event.currentTarget.play().catch(() => {})
+          }
         />
         <Text className="participant-name-overlay">{name} (Anda)</Text>
       </div>
