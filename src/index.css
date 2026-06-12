@@ -597,6 +597,28 @@ a {
   flex: 1;
 }
 
+.fullscreen-chat-scroll .chat-bubble {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.fullscreen-chat-scroll .chat-bubble-row.mine .chat-bubble {
+  background: #1a4a8a;
+  color: #fff;
+}
+
+.fullscreen-chat-scroll .chat-bubble .ant-typography {
+  color: #fff !important;
+}
+
+.fullscreen-chat-scroll .chat-user {
+  opacity: 0.8;
+}
+
+.fullscreen-chat-scroll .chat-time {
+  opacity: 0.6;
+}
+
 @media (max-width: 900px) {
   .fullscreen-side-drawer {
     --fullscreen-drawer-width: min(360px, 86vw);
