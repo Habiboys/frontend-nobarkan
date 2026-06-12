@@ -207,6 +207,7 @@ export default function RoomDetailPage() {
   const [selectedVideoDevice, setSelectedVideoDevice] = useState("");
   const [selectedAudioDevice, setSelectedAudioDevice] = useState("");
   const [selectedAudioOutputDevice, setSelectedAudioOutputDevice] = useState("");
+  const [micSettings, setMicSettings] = useState(null);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const currentUser = getUser();
   const [videoError, setVideoError] = useState("");
@@ -611,72 +612,35 @@ export default function RoomDetailPage() {
     camActiveRef.current = false;
     setCamActive(false);
     setMicMuted(true);
+    setMicSettings(null);
     // Remove remote streams that belong to peers I initiated
     // (They will also be removed when they stop their cam or disconnect)
   }
 
-  // Toggle mic
-  async function toggleMic() {
-    if (!localStreamRef.current) return;
+  const getPeerEntries = () => [
+    ...Object.entries(peersRef.current),
+    ...Object.entries(answerPeersRef.current),
+  ];
 
-    let audioTrack = localStreamRef.current.getAudioTracks()[0];
-    if (!audioTrack) {
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({
-          video: false,
-          audio: selectedAudioDevice
-            ? {
-                deviceId: { exact: selectedAudioDevice },
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-                channelCount: 1,
-                sampleRate: 48000,
-              }
-            : {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-                channelCount: 1,
-                sampleRate: 48000,
-              },
-        });
-        audioTrack = audioStream.getAudioTracks()[0];
-        if (!audioTrack) return;
-        localStreamRef.current.addTrack(audioTrack);
+  const getSelectedAudioInputLabel = () =>
+    availableDevices.audio.find((device) => device.deviceId === selectedAudioDevice)?.label || "";
 
-        const peerEntries = [
-          ...Object.entries(peersRef.current),
-          ...Object.entries(answerPeersRef.current),
-        ];
-        for (const [targetUserID, peer] of peerEntries) {
-          if (peer.getSenders().some((sender) => sender.track?.kind === "audio")) continue;
-          peer.addTrack(audioTrack, localStreamRef.current);
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-          roomSocket.send("webrtc:offer", {
-            target_user_id: targetUserID,
-            sdp: offer.sdp,
-          });
-        }
-        audioTrack.enabled = true;
-        setMicMuted(false);
-        return;
-      } catch (err) {
-        setActionError(getApiErrorMessage(err, "Tidak bisa mengaktifkan mikrofon"));
-        return;
-      }
-    }
+  const getSelectedAudioOutputLabel = () =>
+    availableDevices.audioOutput.find((device) => device.deviceId === selectedAudioOutputDevice)?.label || "";
 
-    const peerEntries = [
-      ...Object.entries(peersRef.current),
-      ...Object.entries(answerPeersRef.current),
-    ];
-    for (const [targetUserID, peer] of peerEntries) {
-      peer
-        .getSenders()
-        .filter((sender) => sender.track?.kind === "audio")
-        .forEach((sender) => peer.removeTrack(sender));
+  const isRiskyAudioLabel = (label = "") => {
+    const value = label.toLowerCase();
+    return ["bluetooth", "hands-free", "handsfree", "headset"].some((keyword) => value.includes(keyword));
+  };
+
+  const hasRiskyAudioDevice = () =>
+    isRiskyAudioLabel(getSelectedAudioInputLabel()) || isRiskyAudioLabel(getSelectedAudioOutputLabel());
+
+  const micProcessingEnabled = () =>
+    Boolean(micSettings?.echoCancellation || micSettings?.noiseSuppression || micSettings?.autoGainControl);
+
+  async function renegotiatePeersAfterTrackChange() {
+    for (const [targetUserID, peer] of getPeerEntries()) {
       const offer = await peer.createOffer();
       await peer.setLocalDescription(offer);
       roomSocket.send("webrtc:offer", {
@@ -684,9 +648,106 @@ export default function RoomDetailPage() {
         sdp: offer.sdp,
       });
     }
-    localStreamRef.current.removeTrack(audioTrack);
-    audioTrack.stop();
+  }
+
+  async function applySelectedAudioOutput() {
+    if (!selectedAudioOutputDevice) return true;
+    if (!videoRef.current || typeof videoRef.current.setSinkId !== "function") {
+      setActionError("Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop via HTTPS.");
+      return false;
+    }
+    try {
+      await videoRef.current.setSinkId(selectedAudioOutputDevice);
+      return true;
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Tidak bisa mengganti output audio film"));
+      return false;
+    }
+  }
+
+  async function enableMic() {
+    if (!localStreamRef.current) return;
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: selectedAudioDevice
+          ? {
+              deviceId: { exact: selectedAudioDevice },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              channelCount: 1,
+              sampleRate: 48000,
+            }
+          : {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              channelCount: 1,
+              sampleRate: 48000,
+            },
+      });
+      const audioTrack = audioStream.getAudioTracks()[0];
+      if (!audioTrack) return;
+      audioTrack.enabled = true;
+      setMicSettings(audioTrack.getSettings?.() || null);
+      localStreamRef.current.addTrack(audioTrack);
+
+      for (const [, peer] of getPeerEntries()) {
+        if (peer.getSenders().some((sender) => sender.track?.kind === "audio")) continue;
+        peer.addTrack(audioTrack, localStreamRef.current);
+      }
+      await renegotiatePeersAfterTrackChange();
+      setMicMuted(false);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Tidak bisa mengaktifkan mikrofon"));
+    }
+  }
+
+  async function hardMuteMic() {
+    if (!localStreamRef.current) {
+      setMicMuted(true);
+      setMicSettings(null);
+      return;
+    }
+    const audioTracks = localStreamRef.current.getAudioTracks();
+    for (const [, peer] of getPeerEntries()) {
+      peer
+        .getSenders()
+        .filter((sender) => sender.track?.kind === "audio")
+        .forEach((sender) => peer.removeTrack(sender));
+    }
+    if (audioTracks.length > 0) {
+      await renegotiatePeersAfterTrackChange();
+    }
+    audioTracks.forEach((track) => {
+      localStreamRef.current?.removeTrack(track);
+      track.stop();
+    });
     setMicMuted(true);
+    setMicSettings(null);
+  }
+
+  async function resetAudioRoute() {
+    const wasPlaying = videoRef.current ? !videoRef.current.paused : false;
+    await hardMuteMic();
+    await applySelectedAudioOutput();
+    if (videoRef.current) {
+      videoRef.current.pause();
+      if (wasPlaying) videoRef.current.play().catch(() => {});
+    }
+    window.setTimeout(() => {
+      applySelectedAudioOutput();
+    }, 800);
+  }
+
+  // Toggle mic
+  async function toggleMic() {
+    if (micMuted) {
+      await enableMic();
+      return;
+    }
+    await hardMuteMic();
   }
 
   // --- Remote WebRTC handlers ---
@@ -815,6 +876,8 @@ export default function RoomDetailPage() {
     localStreamRef.current = null;
     camActiveRef.current = false;
     setCamActive(false);
+    setMicMuted(true);
+    setMicSettings(null);
     setRemoteStreams([]);
     setActiveCams(new Set());
   }
@@ -1260,7 +1323,7 @@ export default function RoomDetailPage() {
   const handleAudioOutputChange = async (deviceId) => {
     setSelectedAudioOutputDevice(deviceId);
     if (!videoRef.current || typeof videoRef.current.setSinkId !== "function") {
-      setActionError("Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop.");
+      setActionError("Browser belum mendukung pemilihan output audio film. Pakai Chrome/Edge desktop via HTTPS.");
       return;
     }
     try {
@@ -1486,6 +1549,11 @@ export default function RoomDetailPage() {
   const goToMovieList = () => {
     navigate("/movies");
   };
+
+  const showAudioWarning = hasRiskyAudioDevice() || micProcessingEnabled();
+  const selectedAudioInputLabel = getSelectedAudioInputLabel();
+  const selectedAudioOutputLabel = getSelectedAudioOutputLabel();
+  const supportsAudioOutputSelection = typeof HTMLMediaElement !== "undefined" && "setSinkId" in HTMLMediaElement.prototype;
 
   return (
     <AppLayout>
@@ -1747,18 +1815,25 @@ export default function RoomDetailPage() {
                           value={videoVolume}
                           onChange={handleVolumeChange}
                         />
-                        {availableDevices.audioOutput.length > 0 ? (
-                          <Select
-                            className="video-output-select"
-                            size="small"
-                            value={selectedAudioOutputDevice}
-                            onChange={handleAudioOutputChange}
-                            options={availableDevices.audioOutput.map((d) => ({
-                              label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
-                              value: d.deviceId,
-                            }))}
-                          />
-                        ) : null}
+                        <div className="video-output-field">
+                          <Text className="video-output-label">Output Film / Speaker</Text>
+                          {availableDevices.audioOutput.length > 0 && supportsAudioOutputSelection ? (
+                            <Select
+                              className="video-output-select"
+                              size="small"
+                              value={selectedAudioOutputDevice}
+                              onChange={handleAudioOutputChange}
+                              options={availableDevices.audioOutput.map((d) => ({
+                                label: d.label || `Speaker ${d.deviceId.slice(0, 8)}`,
+                                value: d.deviceId,
+                              }))}
+                            />
+                          ) : (
+                            <Text className="audio-device-note">
+                              Browser belum mendukung pilih speaker. Pakai Chrome/Edge desktop via HTTPS.
+                            </Text>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <Button
@@ -1852,6 +1927,15 @@ export default function RoomDetailPage() {
                                       : [{ label: "Mikrofon default", value: "" }]
                                   }
                                 />
+                                {showAudioWarning ? (
+                                  <Alert
+                                    className="audio-device-alert"
+                                    type="warning"
+                                    showIcon
+                                    title="Bluetooth/Hands-Free bisa membuat audio film mendem. Gunakan wired headset, speaker laptop, atau mic terpisah."
+                                    description={`Mic: ${selectedAudioInputLabel || "default"} • Speaker: ${selectedAudioOutputLabel || "default"}`}
+                                  />
+                                ) : null}
                                 <Space>
                                   <Button type="primary" size="small" icon={<VideoCameraAddOutlined />} onClick={handleConfirmCam}>
                                     Nyalakan
@@ -1875,8 +1959,29 @@ export default function RoomDetailPage() {
                               >
                                 {micMuted ? "Unmute" : "Mute"}
                               </Button>
+                              <Button size="small" onClick={resetAudioRoute}>
+                                Reset Audio
+                              </Button>
                             </Space>
                           )}
+                          {showAudioWarning ? (
+                            <Alert
+                              className="audio-device-alert"
+                              type="warning"
+                              showIcon
+                              title="Bluetooth/Hands-Free bisa membuat audio film mendem. Gunakan wired headset, speaker laptop, atau mic terpisah."
+                              description={`Mic: ${selectedAudioInputLabel || "default"} • Speaker: ${selectedAudioOutputLabel || "default"}`}
+                            />
+                          ) : null}
+                          {micSettings ? (
+                            <div className="mic-settings-debug">
+                              <Text type="secondary">Mic settings</Text>
+                              <Text>EC: {String(micSettings.echoCancellation ?? false)}</Text>
+                              <Text>NS: {String(micSettings.noiseSuppression ?? false)}</Text>
+                              <Text>AGC: {String(micSettings.autoGainControl ?? false)}</Text>
+                              <Text>Channel: {micSettings.channelCount || "-"}</Text>
+                            </div>
+                          ) : null}
                           <div className="participant-grid fullscreen-participant-grid">
                             <ParticipantTile
                               name={currentUser?.name || "Saya"}
@@ -2129,6 +2234,15 @@ export default function RoomDetailPage() {
                               }
                             />
                           </div>
+                          {showAudioWarning ? (
+                            <Alert
+                              className="audio-device-alert"
+                              type="warning"
+                              showIcon
+                              title="Bluetooth/Hands-Free bisa membuat audio film mendem. Gunakan wired headset, speaker laptop, atau mic terpisah."
+                              description={`Mic: ${selectedAudioInputLabel || "default"} • Speaker: ${selectedAudioOutputLabel || "default"}`}
+                            />
+                          ) : null}
                           <Space>
                             <Button
                               type="primary"
@@ -2168,8 +2282,30 @@ export default function RoomDetailPage() {
                       >
                         {micMuted ? "Unmute" : "Mute"}
                       </Button>
+                      <Button size="small" onClick={resetAudioRoute}>
+                        Reset Audio
+                      </Button>
                     </Space>
                   )}
+
+                  {showAudioWarning ? (
+                    <Alert
+                      className="audio-device-alert"
+                      type="warning"
+                      showIcon
+                      title="Bluetooth/Hands-Free bisa membuat audio film mendem. Gunakan wired headset, speaker laptop, atau mic terpisah."
+                      description={`Mic: ${selectedAudioInputLabel || "default"} • Speaker: ${selectedAudioOutputLabel || "default"}`}
+                    />
+                  ) : null}
+                  {micSettings ? (
+                    <div className="mic-settings-debug">
+                      <Text type="secondary">Mic settings</Text>
+                      <Text>EC: {String(micSettings.echoCancellation ?? false)}</Text>
+                      <Text>NS: {String(micSettings.noiseSuppression ?? false)}</Text>
+                      <Text>AGC: {String(micSettings.autoGainControl ?? false)}</Text>
+                      <Text>Channel: {micSettings.channelCount || "-"}</Text>
+                    </div>
+                  ) : null}
 
                   <div className="participant-grid">
                     <ParticipantTile

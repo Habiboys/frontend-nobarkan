@@ -695,12 +695,13 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 112px;
-  padding: 10px 0;
+  gap: 10px;
+  width: 220px;
+  min-height: 148px;
+  padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(8, 13, 24, 0.5);
+  border-radius: 18px;
+  background: rgba(8, 13, 24, 0.72);
   opacity: 0;
   pointer-events: none;
   transform: translateX(-50%) translateY(8px) scale(0.96);
@@ -718,6 +719,54 @@ a {
 .video-volume-slider {
   height: 86px !important;
   margin: 0 !important;
+}
+
+.video-output-field {
+  display: flex;
+  min-width: 140px;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.video-output-label.ant-typography,
+.audio-device-note.ant-typography {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.video-output-select {
+  width: 100%;
+}
+
+.audio-device-alert {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.mic-settings-debug {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(91, 124, 170, 0.16);
+  border-radius: 12px;
+  background: rgba(244, 247, 255, 0.72);
+  font-size: 12px;
+}
+
+.fullscreen-panel .mic-settings-debug {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.fullscreen-panel .mic-settings-debug .ant-typography {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
 }
 
 .video-controls .ant-slider-rail,
