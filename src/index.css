@@ -565,7 +565,7 @@ a {
 
 .fullscreen-video-panel {
   display: flex;
-  max-height: 44%;
+  max-height: 52%;
   min-height: 0;
   flex-direction: column;
 }
@@ -936,17 +936,19 @@ a {
 
 .participant-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+  padding: 4px;
 }
 
 .participant-tile {
   position: relative;
-  aspect-ratio: 4/3;
-  border-radius: 14px;
+  aspect-ratio: 4 / 3;
+  border-radius: 16px;
   overflow: hidden;
   background: #111827;
+  min-height: 110px;
 }
 
 .participant-placeholder {
