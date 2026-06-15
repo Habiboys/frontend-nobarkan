@@ -590,6 +590,14 @@ a {
 .fullscreen-participant-grid {
   min-height: 0;
   overflow-y: auto;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  padding-right: 4px;
+}
+
+.fullscreen-participant-grid .participant-tile {
+  height: 96px;
+  border-radius: 12px;
 }
 
 .fullscreen-chat-scroll {

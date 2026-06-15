@@ -55,3 +55,18 @@ export async function listRoomChats(code, params = {}) {
     meta: response.data?.meta ?? {},
   }
 }
+
+export async function kickRoomMember(code, userId) {
+  const response = await api.post(`/rooms/${code}/members/${userId}/kick`)
+  return response.data
+}
+
+export async function muteRoomMember(code, userId) {
+  const response = await api.post(`/rooms/${code}/members/${userId}/mute`)
+  return response.data
+}
+
+export async function unmuteRoomMember(code, userId) {
+  const response = await api.post(`/rooms/${code}/members/${userId}/unmute`)
+  return response.data
+}

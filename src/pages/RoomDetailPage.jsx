@@ -47,8 +47,11 @@ import {
   deleteRoom,
   getRoom,
   joinRoom,
+  kickRoomMember,
   leaveRoom,
   listRoomChats,
+  muteRoomMember,
+  unmuteRoomMember,
 } from "../services/roomService";
 import roomSocket from "../services/socket";
 import { getUser } from "../stores/authStore";
@@ -207,7 +210,8 @@ export default function RoomDetailPage() {
   const [fullscreenChatForm] = Form.useForm();
   const [remoteStreams, setRemoteStreams] = useState([]);
   const [camActive, setCamActive] = useState(false);
-  const [micMuted, setMicMuted] = useState(false);
+  const [micMuted, setMicMuted] = useState(true);
+  const [hostMuted, setHostMuted] = useState(false);
   const [activeCams, setActiveCams] = useState(new Set());
   const [onlineMembers, setOnlineMembers] = useState(new Set());
   const [availableDevices, setAvailableDevices] = useState({
@@ -237,11 +241,14 @@ export default function RoomDetailPage() {
   const localVideoRef = useRef(null);
   const fullscreenLocalVideoRef = useRef(null);
   const localStreamRef = useRef(null);
+  const localVideoStreamRef = useRef(null);
+  const localAudioStreamRef = useRef(null);
   const peersRef = useRef({}); // My outgoing peers (I offered): keyed by targetUserID
   const answerPeersRef = useRef({}); // Incoming peers (they offered): keyed by senderUserID
   const iceServersRef = useRef([]);
   const membersRef = useRef([]);
   const chatsEndRef = useRef(null);
+  const fullscreenChatsEndRef = useRef(null);
   const camActiveRef = useRef(false);
   const videoErrorRef = useRef(false);
   const videoRetryCountRef = useRef(0);
@@ -259,10 +266,10 @@ export default function RoomDetailPage() {
 
   // When cam is turned on, ensure the local video element gets the stream
   useEffect(() => {
-    if (camActive && localStreamRef.current) {
+    if (camActive && localVideoStreamRef.current) {
       [localVideoRef.current, fullscreenLocalVideoRef.current].forEach((el) => {
         if (!el) return;
-        el.srcObject = localStreamRef.current;
+        el.srcObject = localVideoStreamRef.current;
         el.play().catch(() => {});
       });
     }
@@ -279,10 +286,35 @@ export default function RoomDetailPage() {
   }, []);
 
   // Helper: scroll chat ke bawah
-  const scrollChatDown = () => {
-    setTimeout(() => {
-      chatsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollChatDown = (behavior = "smooth") => {
+    window.setTimeout(() => {
+      chatsEndRef.current?.scrollIntoView({ behavior, block: "end" });
+      fullscreenChatsEndRef.current?.scrollIntoView({ behavior, block: "end" });
     }, 50);
+  };
+
+  useEffect(() => {
+    scrollChatDown(chats.length > 1 ? "smooth" : "auto");
+  }, [chats.length]);
+
+  const rebuildLocalStream = () => {
+    const stream = new MediaStream();
+    localVideoStreamRef.current?.getVideoTracks().forEach((track) => stream.addTrack(track));
+    localAudioStreamRef.current?.getAudioTracks().forEach((track) => stream.addTrack(track));
+    localStreamRef.current = stream.getTracks().length > 0 ? stream : null;
+    return localStreamRef.current;
+  };
+
+  const getActiveLocalStreams = () => [localVideoStreamRef.current, localAudioStreamRef.current].filter(Boolean);
+
+  const syncLocalTracksToPeer = (peer) => {
+    getActiveLocalStreams().forEach((stream) => {
+      stream.getTracks().forEach((track) => {
+        if (!peer.getSenders().some((sender) => sender.track === track || sender.track?.kind === track.kind)) {
+          peer.addTrack(track, stream);
+        }
+      });
+    });
   };
 
   const loadRoom = async () => {
@@ -426,12 +458,8 @@ export default function RoomDetailPage() {
 
     const peer = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
-    // Add my local tracks
-    if (localStreamRef.current) {
-      localStreamRef.current
-        .getTracks()
-        .forEach((track) => peer.addTrack(track, localStreamRef.current));
-    }
+    // Add my active local tracks
+    syncLocalTracksToPeer(peer);
 
     peer.onicecandidate = (event) => {
       if (event.candidate) {
@@ -529,7 +557,9 @@ export default function RoomDetailPage() {
           audio: false,
         });
       }
-      localStreamRef.current = stream;
+      localVideoStreamRef.current?.getTracks().forEach((track) => track.stop());
+      localVideoStreamRef.current = stream;
+      rebuildLocalStream();
       [localVideoRef.current, fullscreenLocalVideoRef.current].forEach((el) => {
         if (!el) return;
         el.srcObject = stream;
@@ -537,7 +567,6 @@ export default function RoomDetailPage() {
       });
       camActiveRef.current = true;
       setCamActive(true);
-      setMicMuted(true);
       setShowDevicePicker(false);
 
       // Notify others
@@ -631,22 +660,25 @@ export default function RoomDetailPage() {
   }
 
   // I stop my camera/mic
-  function stopMyCam() {
+  async function stopMyCam() {
     roomSocket.send("webrtc:stop", {});
 
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
-    localStreamRef.current = null;
+    localVideoStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localVideoStreamRef.current = null;
+    rebuildLocalStream();
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (fullscreenLocalVideoRef.current)
       fullscreenLocalVideoRef.current.srcObject = null;
 
-    closeAllPeers();
+    for (const [, peer] of getPeerEntries()) {
+      peer
+        .getSenders()
+        .filter((sender) => sender.track?.kind === "video")
+        .forEach((sender) => peer.removeTrack(sender));
+    }
+    await renegotiatePeersAfterTrackChange();
     camActiveRef.current = false;
     setCamActive(false);
-    setMicMuted(true);
-    setMicSettings(null);
-    // Remove remote streams that belong to peers I initiated
-    // (They will also be removed when they stop their cam or disconnect)
   }
 
   const getPeerEntries = () => [
@@ -713,7 +745,10 @@ export default function RoomDetailPage() {
   }
 
   async function enableMic() {
-    if (!localStreamRef.current) return;
+    if (isHostMuted) {
+      setActionError("Mic kamu dimute host.");
+      return;
+    }
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({
         video: false,
@@ -738,14 +773,30 @@ export default function RoomDetailPage() {
       if (!audioTrack) return;
       audioTrack.enabled = true;
       setMicSettings(audioTrack.getSettings?.() || null);
-      localStreamRef.current.addTrack(audioTrack);
+      localAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+      localAudioStreamRef.current = audioStream;
+      rebuildLocalStream();
 
       for (const [, peer] of getPeerEntries()) {
         if (peer.getSenders().some((sender) => sender.track?.kind === "audio"))
           continue;
-        peer.addTrack(audioTrack, localStreamRef.current);
+        peer.addTrack(audioTrack, audioStream);
       }
-      await renegotiatePeersAfterTrackChange();
+      if (getPeerEntries().length === 0) {
+        const targets = membersRef.current.filter((m) => m.id !== currentUser?.id);
+        for (const member of targets) {
+          const peer = createOutgoingPeer(member.id);
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          roomSocket.send("webrtc:offer", {
+            target_user_id: member.id,
+            sdp: offer.sdp,
+          });
+        }
+      } else {
+        await renegotiatePeersAfterTrackChange();
+      }
+      roomSocket.send("webrtc:mic:start", {});
       setMicMuted(false);
     } catch (err) {
       setActionError(
@@ -755,12 +806,7 @@ export default function RoomDetailPage() {
   }
 
   async function hardMuteMic() {
-    if (!localStreamRef.current) {
-      setMicMuted(true);
-      setMicSettings(null);
-      return;
-    }
-    const audioTracks = localStreamRef.current.getAudioTracks();
+    const audioTracks = localAudioStreamRef.current?.getAudioTracks() || [];
     for (const [, peer] of getPeerEntries()) {
       peer
         .getSenders()
@@ -770,10 +816,10 @@ export default function RoomDetailPage() {
     if (audioTracks.length > 0) {
       await renegotiatePeersAfterTrackChange();
     }
-    audioTracks.forEach((track) => {
-      localStreamRef.current?.removeTrack(track);
-      track.stop();
-    });
+    audioTracks.forEach((track) => track.stop());
+    localAudioStreamRef.current = null;
+    rebuildLocalStream();
+    roomSocket.send("webrtc:mic:stop", {});
     setMicMuted(true);
     setMicSettings(null);
   }
@@ -815,12 +861,8 @@ export default function RoomDetailPage() {
     // we keep both separate connections.
     const peer = new RTCPeerConnection({ iceServers: iceServersRef.current });
 
-    // If I also have cam on, add my tracks so we can have bidirectional
-    if (localStreamRef.current) {
-      localStreamRef.current
-        .getTracks()
-        .forEach((track) => peer.addTrack(track, localStreamRef.current));
-    }
+    // If I have local media on, add my tracks so we can have bidirectional media.
+    syncLocalTracksToPeer(peer);
 
     peer.onicecandidate = (event) => {
       if (event.candidate) {
@@ -926,7 +968,10 @@ export default function RoomDetailPage() {
   function stopCall() {
     closeAllPeers();
     pendingIceRef.current = {};
-    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localVideoStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localAudioStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localVideoStreamRef.current = null;
+    localAudioStreamRef.current = null;
     localStreamRef.current = null;
     camActiveRef.current = false;
     setCamActive(false);
@@ -1076,8 +1121,8 @@ export default function RoomDetailPage() {
         if (member.id) next.add(member.id);
         return next;
       });
-      // Auto-reconnect: if my cam is on, send offer to the new member
-      if (camActiveRef.current && member.id !== currentUser?.id) {
+      // Auto-reconnect: if my media is on, send offer to the new member
+      if (localStreamRef.current && member.id !== currentUser?.id) {
         setTimeout(async () => {
           const peer = createOutgoingPeer(member.id);
           const offer = await peer.createOffer();
@@ -1147,6 +1192,38 @@ export default function RoomDetailPage() {
       }
     };
 
+    const onMemberKicked = (payload) => {
+      const targetID = payload?.target_user_id || payload?.user_id;
+      if (targetID === currentUser?.id) {
+        stopCall();
+        roomSocket.disconnect();
+        navigate("/rooms", { replace: true, state: { message: "Kamu dikeluarkan dari room oleh host." } });
+        return;
+      }
+      if (targetID) onMemberLeave({ id: targetID });
+    };
+
+    const onMemberMuted = (payload) => {
+      const targetID = payload?.target_user_id || payload?.user_id;
+      if (!targetID) return;
+      setMembers((items) => items.map((item) => (item.id === targetID ? { ...item, is_muted: true } : item)));
+      if (targetID === currentUser?.id) {
+        setHostMuted(true);
+        hardMuteMic();
+        setActionError("Mic kamu dimute host.");
+      }
+    };
+
+    const onMemberUnmuted = (payload) => {
+      const targetID = payload?.target_user_id || payload?.user_id;
+      if (!targetID) return;
+      setMembers((items) => items.map((item) => (item.id === targetID ? { ...item, is_muted: false } : item)));
+      if (targetID === currentUser?.id) {
+        setHostMuted(false);
+        setActionError("");
+      }
+    };
+
     const onOffer = (payload) => handleRemoteOffer(payload);
     const onAnswer = (payload) => handleRemoteAnswer(payload);
     const onIce = (payload) => handleRemoteIce(payload);
@@ -1165,6 +1242,9 @@ export default function RoomDetailPage() {
     roomSocket.on("player:request_sync", onPlayerSyncRequest);
     roomSocket.on("member:join", onMemberJoin);
     roomSocket.on("member:leave", onMemberLeave);
+    roomSocket.on("member:kicked", onMemberKicked);
+    roomSocket.on("member:muted", onMemberMuted);
+    roomSocket.on("member:unmuted", onMemberUnmuted);
     roomSocket.on("webrtc:start", onCamStart);
     roomSocket.on("webrtc:stop", onCamStop);
     roomSocket.on("webrtc:offer", onOffer);
@@ -1183,6 +1263,9 @@ export default function RoomDetailPage() {
       roomSocket.off("player:request_sync", onPlayerSyncRequest);
       roomSocket.off("member:join", onMemberJoin);
       roomSocket.off("member:leave", onMemberLeave);
+      roomSocket.off("member:kicked", onMemberKicked);
+      roomSocket.off("member:muted", onMemberMuted);
+      roomSocket.off("member:unmuted", onMemberUnmuted);
       roomSocket.off("webrtc:start", onCamStart);
       roomSocket.off("webrtc:stop", onCamStop);
       roomSocket.off("webrtc:offer", onOffer);
@@ -1276,7 +1359,37 @@ export default function RoomDetailPage() {
 
   const hostID = room?.host?.id || room?.host_id;
   const isHostFlag = hostID && currentUser?.id && hostID === currentUser.id;
+  const isHostMuted = hostMuted || members.some((member) => member.id === currentUser?.id && member.is_muted);
   const isRoomEnded = room?.status === "ended";
+
+  const handleKickMember = async (member) => {
+    try {
+      await kickRoomMember(code, member.id);
+      roomSocket.send("member:kick", { target_user_id: member.id });
+      setMembers((items) => items.filter((item) => item.id !== member.id));
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "Gagal kick member"));
+    }
+  };
+
+  const handleMuteMember = async (member, muted) => {
+    try {
+      if (muted) {
+        await muteRoomMember(code, member.id);
+        roomSocket.send("member:mute", { target_user_id: member.id });
+      } else {
+        await unmuteRoomMember(code, member.id);
+        roomSocket.send("member:unmute", { target_user_id: member.id });
+      }
+      setMembers((items) =>
+        items.map((item) =>
+          item.id === member.id ? { ...item, is_muted: muted } : item,
+        ),
+      );
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, muted ? "Gagal mute member" : "Gagal unmute member"));
+    }
+  };
 
   const sendPlayerEvent = (type) => {
     if (isRoomEnded) return;
@@ -2027,6 +2140,15 @@ export default function RoomDetailPage() {
                                 >
                                   Nyalakan Kamera
                                 </Button>
+                                <Button
+                                  size="small"
+                                  icon={micMuted ? <AudioMutedOutlined /> : <AudioOutlined />}
+                                  onClick={toggleMic}
+                                  type={micMuted ? "default" : "primary"}
+                                  disabled={isHostMuted}
+                                >
+                                  {micMuted ? "Nyalakan Mic" : "Matikan Mic"}
+                                </Button>
                               </Space>
                             ) : (
                               <Space
@@ -2119,6 +2241,7 @@ export default function RoomDetailPage() {
                                 }
                                 onClick={toggleMic}
                                 type={micMuted ? "default" : "primary"}
+                                disabled={isHostMuted}
                               >
                                 {micMuted ? "Unmute" : "Mute"}
                               </Button>
@@ -2223,6 +2346,7 @@ export default function RoomDetailPage() {
                                 </div>
                               );
                             })}
+                            <div ref={fullscreenChatsEndRef} />
                           </div>
                           <Form
                             form={fullscreenChatForm}
@@ -2366,7 +2490,24 @@ export default function RoomDetailPage() {
                               ? "online"
                               : "offline"}
                           </Tag>
+                          {member.is_muted ? <Tag color="red">Muted</Tag> : null}
                         </div>
+                        {isHostFlag && member.id !== currentUser?.id && member.role !== "host" ? (
+                          <Space size={4} wrap>
+                            <Button size="small" onClick={() => handleMuteMember(member, !member.is_muted)}>
+                              {member.is_muted ? "Unmute" : "Mute"}
+                            </Button>
+                            <Popconfirm
+                              title="Kick member ini?"
+                              description="Member akan keluar dari room."
+                              onConfirm={() => handleKickMember(member)}
+                            >
+                              <Button size="small" danger>
+                                Kick
+                              </Button>
+                            </Popconfirm>
+                          </Space>
+                        ) : null}
                       </div>
                     ))}
                   </div>
@@ -2489,6 +2630,7 @@ export default function RoomDetailPage() {
                         }
                         onClick={toggleMic}
                         type={micMuted ? "default" : "primary"}
+                        disabled={isHostMuted}
                       >
                         {micMuted ? "Unmute" : "Mute"}
                       </Button>
@@ -2497,6 +2639,21 @@ export default function RoomDetailPage() {
                       </Button>
                     </Space>
                   )}
+
+                  <Space wrap>
+                    {!camActive ? (
+                      <Button
+                        size="small"
+                        icon={<AudioMutedOutlined />}
+                        onClick={toggleMic}
+                        type={micMuted ? "default" : "primary"}
+                        disabled={isHostMuted}
+                      >
+                        {micMuted ? "Nyalakan Mic" : "Matikan Mic"}
+                      </Button>
+                    ) : null}
+                    {isHostMuted ? <Tag color="red">Dimute host</Tag> : null}
+                  </Space>
 
                   {showAudioWarning ? (
                     <Alert
