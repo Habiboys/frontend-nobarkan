@@ -2376,7 +2376,7 @@ export default function RoomDetailPage() {
                   {isCacheDownloading ? (
                     <Spin size="large" />
                   ) : (
-                    <GoogleOutlined />
+                  <GoogleOutlined />
                   )}
                   <Title level={3}>
                     {isCacheDownloading
@@ -2697,17 +2697,17 @@ export default function RoomDetailPage() {
                         const hasStream = remoteStreams.find(
                           (s) => s.userID === member.id,
                         );
-                        return (
-                          <ParticipantTile
-                            key={member.id}
+                      return (
+                        <ParticipantTile
+                          key={member.id}
                             name={member.name || "User"}
-                            role={member.role}
-                            isCamOn={isCamOn}
-                            stream={hasStream?.stream}
+                          role={member.role}
+                          isCamOn={isCamOn}
+                          stream={hasStream?.stream}
                             audioOutputDevice={selectedAudioOutputDevice}
-                          />
+                        />
                         );
-                      })}
+                    })}
                   </div>
                 </Space>
               </Card>

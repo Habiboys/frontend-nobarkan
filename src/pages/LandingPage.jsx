@@ -1,162 +1,88 @@
-import {
-  CommentOutlined,
-  PlayCircleOutlined,
-  RocketOutlined,
-  SafetyCertificateOutlined,
-  TeamOutlined,
-  VideoCameraOutlined,
-} from '@ant-design/icons'
-import { Button, Card, Col, Layout, Row, Space, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { isAuthenticated } from '../stores/authStore'
 
-const { Header, Content, Footer } = Layout
-const { Paragraph, Title, Text } = Typography
-
-const features = [
-  {
-    icon: <PlayCircleOutlined />,
-    title: 'Nobar realtime',
-    description: 'Buat room dan tonton film bersama teman dari mana saja.',
-  },
-  {
-    icon: <RocketOutlined />,
-    title: 'Sync video',
-    description: 'Playback room dirancang agar semua peserta tetap sinkron.',
-  },
-  {
-    icon: <CommentOutlined />,
-    title: 'Chat room',
-    description: 'Diskusi langsung sambil menonton tanpa pindah aplikasi.',
-  },
-  {
-    icon: <VideoCameraOutlined />,
-    title: 'Oncam WebRTC',
-    description: 'Siap untuk video call dengan konfigurasi STUN dari backend.',
-  },
+const highlights = [
+  'Video sync realtime',
+  'Room private',
+  'Chat dan oncam',
 ]
+
+const tickerItems = [...highlights, ...highlights, ...highlights]
 
 export default function LandingPage() {
   const loggedIn = isAuthenticated()
+  const primaryPath = loggedIn ? '/dashboard' : '/register'
+  const primaryLabel = loggedIn ? 'Buka dashboard' : 'Mulai nobar'
 
   return (
-    <Layout className="marketing-shell">
-      <Header className="marketing-header">
-        <Link to="/" className="brand-link">
-          <Space size={10}>
-            <PlayCircleOutlined />
-            <Text strong className="brand-text">
-              Nobarkan
-            </Text>
-          </Space>
+    <main className="cinema-landing">
+      <header className="cinema-nav">
+        <Link to="/" className="cinema-brand" aria-label="Nobarkan home">
+          Nobarkan
         </Link>
-        <Space>
+
+        <nav className="cinema-nav-actions" aria-label="Menu landing">
           {loggedIn ? (
-            <Link to="/dashboard">
-              <Button type="primary">Dashboard</Button>
+            <Link to="/dashboard" className="cinema-link-button cinema-link-primary">
+              Dashboard
             </Link>
           ) : (
             <>
-              <Link to="/login">
-                <Button>Masuk</Button>
+              <Link to="/login" className="cinema-link-button cinema-link-ghost">
+                Masuk
               </Link>
-              <Link to="/register">
-                <Button type="primary">Daftar</Button>
+              <Link to="/register" className="cinema-link-button cinema-link-primary">
+                Daftar
               </Link>
             </>
           )}
-        </Space>
-      </Header>
+        </nav>
+      </header>
 
-      <Content>
-        <section className="hero-section">
-          <div className="hero-glow" />
-          <Row gutter={[40, 40]} align="middle" className="hero-grid">
-            <Col xs={24} lg={13}>
-              <Space orientation="vertical" size={24}>
-                <Text className="eyebrow">
-                  <TeamOutlined /> Watch party modern untuk komunitasmu
-                </Text>
-                <Title className="hero-title">
-                  Nonton bareng online dengan chat, sync video, dan oncam.
-                </Title>
-                <Paragraph className="hero-description">
-                  Nobarkan membantu kamu membuat ruang nobar realtime: upload atau pilih film,
-                  undang teman, ngobrol, dan aktifkan video call berbasis WebRTC saat dibutuhkan.
-                </Paragraph>
-                <Space size={12} wrap>
-                  {loggedIn ? (
-                    <Link to="/dashboard">
-                      <Button type="primary" size="large" icon={<RocketOutlined />}>
-                        Buka dashboard
-                      </Button>
-                    </Link>
-                  ) : (
-                    <>
-                      <Link to="/register">
-                        <Button type="primary" size="large" icon={<RocketOutlined />}>
-                          Mulai sekarang
-                        </Button>
-                      </Link>
-                      <Link to="/login">
-                        <Button size="large">Saya sudah punya akun</Button>
-                      </Link>
-                    </>
-                  )}
-                </Space>
-              </Space>
-            </Col>
-            <Col xs={24} lg={11}>
-              <Card className="hero-card" variant="borderless">
-                <Space orientation="vertical" size={18} className="full-width">
-                  <div className="preview-player">
-                    <PlayCircleOutlined />
-                    <span>Movie Night Room</span>
-                  </div>
-                  <Row gutter={[12, 12]}>
-                    <Col span={12}>
-                      <div className="metric-card">
-                        <strong>00:42:18</strong>
-                        <span>Synced time</span>
-                      </div>
-                    </Col>
-                    <Col span={12}>
-                      <div className="metric-card">
-                        <strong>6 online</strong>
-                        <span>Participants</span>
-                      </div>
-                    </Col>
-                  </Row>
-                  <div className="chat-bubble">Riko: gas lanjut scene berikutnya!</div>
-                  <div className="chat-bubble muted">Naya: oncam sudah ready.</div>
-                </Space>
-              </Card>
-            </Col>
-          </Row>
-        </section>
+      <section className="cinema-hero">
+        <div className="cinema-hero-copy">
+          <h1>Nonton bareng online, tetap sinkron.</h1>
+          <p className="cinema-subtitle">
+            Buat room nobar, bagikan kode, lalu tonton film bersama teman dengan chat dan oncam
+            dalam satu tempat.
+          </p>
 
-        <section className="section-container">
-          <div className="section-heading">
-            <Text className="eyebrow">
-              <SafetyCertificateOutlined /> Fitur awal
-            </Text>
-            <Title level={2}>Dibangun untuk pengalaman nobar yang rapi</Title>
+          <div className="cinema-cta-row">
+            <Link to={primaryPath} className="cinema-cta-primary">
+              {primaryLabel}
+            </Link>
+            {!loggedIn ? (
+              <Link to="/login" className="cinema-cta-secondary">
+                Masuk dulu
+              </Link>
+            ) : null}
           </div>
-          <Row gutter={[20, 20]}>
-            {features.map((feature) => (
-              <Col xs={24} md={12} xl={6} key={feature.title}>
-                <Card className="feature-card" variant="borderless">
-                  <div className="feature-icon">{feature.icon}</div>
-                  <Title level={4}>{feature.title}</Title>
-                  <Paragraph>{feature.description}</Paragraph>
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        </section>
-      </Content>
+        </div>
 
-      <Footer className="marketing-footer">Nobarkan © 2026</Footer>
-    </Layout>
+        <aside className="cinema-preview" aria-label="Preview fitur Nobarkan">
+          <div className="cinema-preview-poster">
+            <img
+              className="cinema-preview-img"
+              src="/images/poster.webp"
+              alt="Poster film preview"
+              loading="lazy"
+            />
+            <span className="cinema-preview-label">Now watching</span>
+            <strong>Blue Night</strong>
+            <small>6 online • 00:42:18</small>
+          </div>
+        </aside>
+      </section>
+
+      <section className="cinema-ticker" aria-label="Highlight Nobarkan">
+        <div className="cinema-ticker-track">
+          {tickerItems.map((item, i) => (
+            <span className="cinema-ticker-item" key={`${item}-${i}`}>
+              {item}
+            </span>
+          ))}
+        </div>
+      </section>
+    </main>
   )
 }
