@@ -1,5 +1,5 @@
 import { LockOutlined, MailOutlined, PlayCircleOutlined, UserAddOutlined, UserOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Form, Input, Layout, Space, Typography } from 'antd'
+import { Alert, Button, Card, Col, Form, Input, Layout, Row, Space, Typography } from 'antd'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { getApiErrorMessage } from '../services/api'
@@ -51,57 +51,65 @@ export default function RegisterPage() {
             {error ? <Alert type="error" title={error} showIcon /> : null}
 
             <Form layout="vertical" size="large" onFinish={handleSubmit} requiredMark={false}>
-              <Form.Item
-                label="Nama"
-                name="name"
-                rules={[{ required: true, message: 'Nama wajib diisi' }]}
-              >
-                <Input prefix={<UserOutlined />} placeholder="Nama lengkap" />
-              </Form.Item>
-
-              <Form.Item
-                label="Email"
-                name="email"
-                rules={[
-                  { required: true, message: 'Email wajib diisi' },
-                  { type: 'email', message: 'Format email tidak valid' },
-                ]}
-              >
-                <Input prefix={<MailOutlined />} placeholder="nama@email.com" />
-              </Form.Item>
-
-              <Form.Item
-                label="Password"
-                name="password"
-                rules={[
-                  { required: true, message: 'Password wajib diisi' },
-                  { min: 6, message: 'Password minimal 6 karakter' },
-                ]}
-                hasFeedback
-              >
-                <Input.Password prefix={<LockOutlined />} placeholder="Buat password" />
-              </Form.Item>
-
-              <Form.Item
-                label="Konfirmasi password"
-                name="confirm_password"
-                dependencies={["password"]}
-                rules={[
-                  { required: true, message: 'Konfirmasi password wajib diisi' },
-                  ({ getFieldValue }) => ({
-                    validator(_, value) {
-                      if (!value || getFieldValue('password') === value) {
-                        return Promise.resolve()
-                      }
-
-                      return Promise.reject(new Error('Konfirmasi password tidak sama'))
-                    },
-                  }),
-                ]}
-                hasFeedback
-              >
-                <Input.Password prefix={<LockOutlined />} placeholder="Ulangi password" />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col xs={24} sm={12}>
+                  <Form.Item
+                    label="Nama"
+                    name="name"
+                    rules={[{ required: true, message: 'Nama wajib diisi' }]}
+                  >
+                    <Input prefix={<UserOutlined />} placeholder="Nama lengkap" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Form.Item
+                    label="Email"
+                    name="email"
+                    rules={[
+                      { required: true, message: 'Email wajib diisi' },
+                      { type: 'email', message: 'Format email tidak valid' },
+                    ]}
+                  >
+                    <Input prefix={<MailOutlined />} placeholder="nama@email.com" />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col xs={24} sm={12}>
+                  <Form.Item
+                    label="Password"
+                    name="password"
+                    rules={[
+                      { required: true, message: 'Password wajib diisi' },
+                      { min: 6, message: 'Password minimal 6 karakter' },
+                    ]}
+                    hasFeedback
+                  >
+                    <Input.Password prefix={<LockOutlined />} placeholder="Buat password" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12}>
+                  <Form.Item
+                    label="Konfirmasi password"
+                    name="confirm_password"
+                    dependencies={["password"]}
+                    rules={[
+                      { required: true, message: 'Konfirmasi password wajib diisi' },
+                      ({ getFieldValue }) => ({
+                        validator(_, value) {
+                          if (!value || getFieldValue('password') === value) {
+                            return Promise.resolve()
+                          }
+                          return Promise.reject(new Error('Konfirmasi password tidak sama'))
+                        },
+                      }),
+                    ]}
+                    hasFeedback
+                  >
+                    <Input.Password prefix={<LockOutlined />} placeholder="Ulangi password" />
+                  </Form.Item>
+                </Col>
+              </Row>
 
               <Button type="primary" htmlType="submit" block loading={loading} icon={<UserAddOutlined />}>
                 Daftar

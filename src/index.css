@@ -807,6 +807,10 @@ a {
   text-align: center;
 }
 
+.auth-card .ant-form-item {
+  margin-bottom: 14px;
+}
+
 .auth-brand {
   display: inline-flex;
   margin-bottom: 14px;
@@ -2276,6 +2280,79 @@ a {
   white-space: nowrap;
 }
 
+.cinema-about {
+  position: relative;
+  z-index: 1;
+  width: min(1120px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 64px 0 72px;
+}
+
+.cinema-about-inner {
+  border: 1px solid rgba(22, 119, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: clamp(28px, 4vw, 48px);
+}
+
+.cinema-about-heading {
+  max-width: 620px;
+  margin-bottom: 34px;
+}
+
+.cinema-about-heading p {
+  margin: 0 0 8px;
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.cinema-about-heading h2 {
+  margin: 0;
+  color: #0b1220;
+  font-size: clamp(26px, 4vw, 42px);
+  letter-spacing: -0.045em;
+  line-height: 1.1;
+}
+
+.cinema-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.cinema-step {
+  padding: 20px;
+  border: 1px solid rgba(22, 119, 255, 0.1);
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.cinema-step-num {
+  display: inline-block;
+  color: #1677ff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+
+.cinema-step h3 {
+  margin: 0 0 10px;
+  color: #0b1220;
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.cinema-step p {
+  margin: 0;
+  color: #536179;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
 @keyframes cinema-ticker-scroll {
   from {
     transform: translateX(0);
@@ -2295,6 +2372,10 @@ a {
   .cinema-preview-poster {
     min-height: 360px;
   }
+
+  .cinema-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -2302,6 +2383,10 @@ a {
   .cinema-hero,
   .cinema-ticker {
     width: min(100% - 28px, 1120px);
+  }
+
+  .cinema-landing {
+    background-attachment: scroll;
   }
 
   .cinema-nav {
@@ -2341,14 +2426,22 @@ a {
   .cinema-preview-poster strong {
     font-size: 42px;
   }
+
+  .cinema-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .cinema-about {
+    width: min(100% - 28px, 1120px);
+  }
 }
 
 /* Bright landing theme */
 .cinema-landing {
   color: #101827;
   background:
-    radial-gradient(circle at 80% 18%, rgba(22, 119, 255, 0.14), transparent 28rem),
-    linear-gradient(180deg, #f8fbff 0%, #eef5ff 52%, #ffffff 100%);
+    linear-gradient(90deg, rgba(248, 251, 255, 0.58) 0%, rgba(248, 251, 255, 0.28) 48%, rgba(248, 251, 255, 0.56) 100%),
+    url('/images/background.png') center top / cover no-repeat fixed;
 }
 
 .cinema-landing::before {
@@ -2373,13 +2466,16 @@ a {
 
 .cinema-link-ghost,
 .cinema-cta-secondary {
-  color: #172033;
-  background: rgba(15, 23, 42, 0.07);
+  color: #0b1220;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
 }
 
 .cinema-link-ghost:hover,
 .cinema-cta-secondary:hover {
-  background: rgba(15, 23, 42, 0.11);
+  background: #ffffff;
+  border-color: rgba(22, 119, 255, 0.32);
 }
 
 .cinema-hero-copy h1 {
@@ -2387,7 +2483,9 @@ a {
 }
 
 .cinema-subtitle {
-  color: #536179;
+  color: #111827;
+  font-weight: 700;
+  text-shadow: 0 1px 12px rgba(255, 255, 255, 0.86);
 }
 
 .cinema-preview-poster {
