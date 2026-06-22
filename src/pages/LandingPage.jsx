@@ -76,9 +76,9 @@ export default function LandingPage() {
               alt="Poster film preview"
               loading="lazy"
             />
-            <span className="cinema-preview-label">Now watching</span>
+            {/* <span className="cinema-preview-label">Now watching</span>
             <strong>Oppenheimer</strong>
-            <small>6 online • 00:42:18</small>
+            <small>6 online • 00:42:18</small> */}
           </div>
         </aside>
       </section>
