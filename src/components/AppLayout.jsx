@@ -1,4 +1,5 @@
 import {
+  GlobalOutlined,
   HomeOutlined,
   LogoutOutlined,
   MenuOutlined,
@@ -29,6 +30,11 @@ const menuItems = [
     key: '/rooms',
     icon: <UnorderedListOutlined />,
     label: <Link to="/rooms">Rooms</Link>,
+  },
+  {
+    key: '/extractors',
+    icon: <GlobalOutlined />,
+    label: <Link to="/extractors">Sites</Link>,
   },
   {
     key: '/profile',

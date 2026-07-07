@@ -94,7 +94,7 @@ export default function RoomsPage() {
       ...values,
       is_private: isPrivate,
       movie_id: values.movie_id || null,
-      mode: 'gdrive',
+      mode: 'external',
       password: isPrivate ? (values.password || null) : null,
       max_members: values.max_members || 10,
     }

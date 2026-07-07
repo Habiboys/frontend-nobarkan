@@ -6,7 +6,7 @@ import {
   CompressOutlined,
   DeleteOutlined,
   ExpandOutlined,
-  GoogleOutlined,
+  LinkOutlined,
   LogoutOutlined,
   PauseCircleOutlined,
   PhoneOutlined,
@@ -123,48 +123,27 @@ function resolveVideoURL(url) {
   return url;
 }
 
-function normalizeDriveError(error) {
+function normalizeExternalError(error) {
   if (!error) return null;
 
-  const code = error.code || "drive_proxy_failed";
+  const code = error.code || "external_error";
   const defaults = {
-    drive_quota_exceeded: {
-      title: "Google Drive membatasi file ini",
-      message:
-        "File ini terkena limit view/download atau terlalu sering diakses dari server.",
-      suggestion:
-        "Upload atau copy file ke Drive kamu sendiri, pastikan Anyone with the link sebagai Viewer, lalu ganti link movie.",
-    },
-    drive_file_not_public: {
-      title: "File Drive tidak bisa diakses publik",
-      message:
-        "File kemungkinan private, butuh login, atau sharing belum disetel publik.",
-      suggestion:
-        "Ubah akses sharing menjadi Anyone with the link sebagai Viewer.",
-    },
-    drive_confirm_failed: {
-      title: "Konfirmasi download Google Drive gagal",
-      message:
-        "Google Drive menampilkan halaman konfirmasi, tetapi link download final tidak berhasil dipakai.",
-      suggestion:
-        "Buka link Drive langsung, klik Tetap download, atau upload/copy file ke Drive kamu sendiri lalu gunakan link baru.",
-    },
-    drive_caching: {
+    external_caching: {
       title: "Film sedang didownload ke server",
       message:
-        "Film belum siap ditonton karena server sedang mengambil file dari Google Drive.",
+        "Film belum siap ditonton karena server sedang mengambil file dari sumber video.",
       suggestion:
         "Tunggu sampai proses download selesai. Setelah siap, semua peserta akan streaming dari server.",
     },
-    drive_proxy_failed: {
-      title: "Video Google Drive gagal dimuat",
-      message: "Server gagal mengambil video dari Google Drive.",
+    external_failed: {
+      title: "Video gagal dimuat",
+      message: "Server gagal mengambil video dari sumber yang diberikan.",
       suggestion:
-        "Coba muat ulang. Jika tetap gagal, gunakan link Drive lain atau upload/copy file ke Drive kamu sendiri.",
+        "Coba muat ulang. Jika tetap gagal, gunakan link video lain.",
     },
   };
 
-  const fallback = defaults[code] || defaults.drive_proxy_failed;
+  const fallback = defaults[code] || defaults.external_failed;
   return {
     code,
     title: error.title || fallback.title,
@@ -228,7 +207,7 @@ export default function RoomDetailPage() {
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const currentUser = getUser();
   const [videoError, setVideoError] = useState("");
-  const [driveError, setDriveError] = useState(null);
+  const [externalError, setExternalError] = useState(null);
   const [cacheStatus, setCacheStatus] = useState(null);
   const [cacheProgress, setCacheProgress] = useState(null);
   const [videoRetryKey, setVideoRetryKey] = useState(0);
@@ -1465,7 +1444,7 @@ export default function RoomDetailPage() {
     videoRetryCountRef.current = 0;
     videoErrorRef.current = false;
     setVideoError("");
-    setDriveError(null);
+    setExternalError(null);
 
     // Replay last sync data if video wasn't ready when sync arrived
     const sync = lastSyncRef.current;
@@ -1532,31 +1511,29 @@ export default function RoomDetailPage() {
 
   // Movie data
   const movie = room?.movie;
-  const driveURL = movie?.drive_url || movie?.external_url || "";
-  const driveDirectURL = movie?.drive_direct_url || "";
-  const videoURL = resolveVideoURL(driveDirectURL);
+  const externalURL = movie?.external_url || "";
+  const movieID = movie?.id || "";
+  const proxyURL = movieID ? resolveVideoURL(`/proxy/external/${movieID}`) : "";
 
   const isCacheReady =
     cacheStatus === "ready" ||
-    !driveDirectURL ||
+    !proxyURL ||
     cacheStatus === null ||
     cacheStatus === "checking";
   const isCacheDownloading = cacheStatus === "downloading";
-  const videoMode = videoURL && !videoError && isCacheReady ? "native" : null;
+  const videoMode = proxyURL && !videoError && isCacheReady ? "native" : null;
 
   useEffect(() => {
     let active = true;
     let timer = null;
 
-    async function checkDriveCache() {
-      if (!videoURL || !driveDirectURL) return;
+    async function checkCache() {
+      if (!proxyURL || !movieID) return;
       await Promise.resolve();
       if (!active) return;
       setCacheStatus((current) => current || "checking");
       try {
-        const response = await fetch(`${videoURL}/prefetch`, {
-          method: "POST",
-        });
+        const response = await fetch(`${proxyURL}/status`);
         const contentType = response.headers.get("content-type") || "";
         const body = contentType.includes("application/json")
           ? await response.json()
@@ -1564,41 +1541,40 @@ export default function RoomDetailPage() {
         const nextStatus = body?.status || (response.ok ? "ready" : "error");
         if (!active) return;
         if (nextStatus === "ready") {
-          // Reset retry state so the video element can reload fresh from cache
           videoRetryCountRef.current = 0;
           videoErrorRef.current = false;
           setCacheStatus("ready");
           setCacheProgress(null);
-          setDriveError(null);
+          setExternalError(null);
           setVideoError("");
           return;
         }
         if (nextStatus === "downloading") {
           setCacheStatus("downloading");
           setCacheProgress(body?.progress || null);
-          timer = setTimeout(checkDriveCache, 3000);
+          timer = setTimeout(checkCache, 3000);
           return;
         }
-        const normalized = normalizeDriveError(
-          body?.error || { code: "drive_proxy_failed" },
+        const normalized = normalizeExternalError(
+          body?.error || { code: "external_failed" },
         );
-        setDriveError(normalized);
+        setExternalError(normalized);
         setVideoError(normalized.title);
         setCacheStatus("error");
       } catch {
         if (!active) return;
         setCacheStatus("downloading");
-        timer = setTimeout(checkDriveCache, 5000);
+        timer = setTimeout(checkCache, 5000);
       }
     }
 
-    checkDriveCache();
+    checkCache();
 
     return () => {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [driveDirectURL, videoURL]);
+  }, [movieID, proxyURL]);
 
   useEffect(() => {
     if (
@@ -1625,36 +1601,36 @@ export default function RoomDetailPage() {
   }, [playerState.is_playing]);
 
   async function diagnoseVideoURL() {
-    if (!videoURL) return;
+    if (!proxyURL) return;
 
     try {
-      const response = await fetch(videoURL, {
+      const response = await fetch(proxyURL, {
         headers: { Range: "bytes=0-1" },
       });
       const contentType = response.headers.get("content-type") || "";
       if (!response.ok && contentType.includes("application/json")) {
         const body = await response.json();
-        const normalized = normalizeDriveError(body?.error || body);
-        setDriveError(normalized);
-        setVideoError(normalized?.title || "Video Google Drive gagal dimuat");
+        const normalized = normalizeExternalError(body?.error || body);
+        setExternalError(normalized);
+        setVideoError(normalized?.title || "Video gagal dimuat");
         return;
       }
       if (response.status === 429) {
-        const normalized = normalizeDriveError({
-          code: "drive_quota_exceeded",
+        const normalized = normalizeExternalError({
+          code: "external_failed",
         });
-        setDriveError(normalized);
+        setExternalError(normalized);
         setVideoError(normalized.title);
         return;
       }
       if (!response.ok) {
-        const normalized = normalizeDriveError({ code: "drive_proxy_failed" });
-        setDriveError(normalized);
+        const normalized = normalizeExternalError({ code: "external_failed" });
+        setExternalError(normalized);
         setVideoError(normalized.title);
       }
     } catch {
-      const normalized = normalizeDriveError({ code: "drive_proxy_failed" });
-      setDriveError(normalized);
+      const normalized = normalizeExternalError({ code: "external_failed" });
+      setExternalError(normalized);
       setVideoError(normalized.title);
     }
   }
@@ -1669,7 +1645,7 @@ export default function RoomDetailPage() {
 
     videoRetryCountRef.current = retryCount + 1;
     setVideoError("");
-    setDriveError(null);
+    setExternalError(null);
 
     if (videoRetryTimerRef.current) clearTimeout(videoRetryTimerRef.current);
     const delay = 800 + retryCount * 700;
@@ -1687,8 +1663,8 @@ export default function RoomDetailPage() {
     videoRetryCountRef.current = 0;
     videoErrorRef.current = false;
     setVideoError("");
-    setDriveError(null);
-    setCacheStatus(driveDirectURL ? "checking" : null);
+    setExternalError(null);
+    setCacheStatus(proxyURL ? "checking" : null);
     setVideoRetryKey((current) => current + 1);
   };
 
@@ -1828,14 +1804,14 @@ export default function RoomDetailPage() {
             onClose={() => setActionError("")}
           />
         ) : null}
-        {driveError ? (
+        {externalError ? (
           <Alert
             type="error"
-            title={driveError.title}
+            title={externalError.title}
             description={
               <Space orientation="vertical" size={8}>
-                <Text>{driveError.message}</Text>
-                <Text strong>{driveError.suggestion}</Text>
+                <Text>{externalError.message}</Text>
+                <Text strong>{externalError.suggestion}</Text>
                 <Space wrap>
                   <Button
                     size="small"
@@ -1844,16 +1820,6 @@ export default function RoomDetailPage() {
                   >
                     Muat Ulang Video
                   </Button>
-                  {driveURL ? (
-                    <Button
-                      size="small"
-                      href={driveURL}
-                      target="_blank"
-                      icon={<GoogleOutlined />}
-                    >
-                      Buka di Google Drive
-                    </Button>
-                  ) : null}
                   <Button size="small" onClick={goToMovieList}>
                     Ganti Link Movie
                   </Button>
@@ -1863,7 +1829,7 @@ export default function RoomDetailPage() {
             showIcon
             closable
             onClose={() => {
-              setDriveError(null);
+              setExternalError(null);
               setVideoError("");
             }}
           />
@@ -1913,7 +1879,7 @@ export default function RoomDetailPage() {
                     onTouchStart={handleVideoWrapperMove}
                     playsInline
                   >
-                    <source src={videoURL} />
+                    <source src={proxyURL} />
                   </video>
                   <div className="video-controls">
                     {isHostFlag ? (
@@ -2376,47 +2342,43 @@ export default function RoomDetailPage() {
                   {isCacheDownloading ? (
                     <Spin size="large" />
                   ) : (
-                  <GoogleOutlined />
+                  <LinkOutlined />
                   )}
                   <Title level={3}>
                     {isCacheDownloading
                       ? "Mendownload film ke server..."
-                      : "Google Drive Video"}
+                      : "Video External"}
                   </Title>
                   <Paragraph>
                     {isCacheDownloading
                       ? cacheProgress?.downloaded
                         ? `Download berjalan: ${formatBytes(cacheProgress.downloaded)}${cacheProgress.total ? ` / ${formatBytes(cacheProgress.total)} (${Math.round((cacheProgress.downloaded / cacheProgress.total) * 100)}%)` : ""}`
-                        : "Server sedang mulai download film dari Google Drive. Progress akan muncul sebentar lagi."
-                      : "Pilih movie Google Drive agar video tampil."}
+                        : "Server sedang mulai download film. Progress akan muncul sebentar lagi."
+                      : "Pilih movie agar video tampil."}
                   </Paragraph>
                   <Space wrap>
-                    {driveURL ? (
+                    <Button
+                      type="primary"
+                      onClick={handleReloadVideo}
+                      icon={<ReloadOutlined />}
+                      disabled={isCacheDownloading}
+                    >
+                      Muat Ulang Video
+                    </Button>
+                    {externalURL ? (
                       <Button
-                        type="primary"
-                        onClick={handleReloadVideo}
-                        icon={<ReloadOutlined />}
-                        disabled={isCacheDownloading}
-                      >
-                        Muat Ulang Video
-                      </Button>
-                    ) : null}
-                    {driveURL ? (
-                      <Button
-                        href={driveURL}
+                        href={externalURL}
                         target="_blank"
-                        icon={<GoogleOutlined />}
+                        icon={<LinkOutlined />}
                       >
-                        Buka di Google Drive
+                        Buka Link
                       </Button>
                     ) : null}
-                    {driveURL ? (
-                      <Button onClick={goToMovieList}>Ganti Link Movie</Button>
-                    ) : null}
+                    <Button onClick={goToMovieList}>Ganti Link Movie</Button>
                   </Space>
-                  {driveURL ? (
+                  {externalURL ? (
                     <Text copyable style={{ marginTop: 8, display: "block" }}>
-                      {driveURL}
+                      {externalURL}
                     </Text>
                   ) : null}
                 </div>

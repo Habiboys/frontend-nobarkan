@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom'
 import ProtectedRoute from '../components/ProtectedRoute'
 import PublicRoute from '../components/PublicRoute'
 import DashboardPage from '../pages/DashboardPage'
+import ExtractorsPage from '../pages/ExtractorsPage'
 import LandingPage from '../pages/LandingPage'
 import LoginPage from '../pages/LoginPage'
 import MoviesPage from '../pages/MoviesPage'
@@ -46,6 +47,10 @@ const router = createBrowserRouter([
       {
         path: '/rooms/:code',
         element: <RoomDetailPage />,
+      },
+      {
+        path: '/extractors',
+        element: <ExtractorsPage />,
       },
       {
         path: '/profile',

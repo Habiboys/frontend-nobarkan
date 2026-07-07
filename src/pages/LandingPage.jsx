@@ -104,8 +104,9 @@ export default function LandingPage() {
               <span className="cinema-step-num">01</span>
               <h3>Tambahkan film</h3>
               <p>
-                Tempel link Google Drive film. Server Nobarkan otomatis download
-                dan cache supaya streaming cepat dan stabil untuk semua peserta.
+                Tempel link video dari YouTube, Vimeo, atau platform streaming
+                lainnya. Server otomatis download dan cache supaya streaming
+                cepat dan stabil untuk semua peserta.
               </p>
             </div>
             <div className="cinema-step">

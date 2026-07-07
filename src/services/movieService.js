@@ -13,7 +13,7 @@ export async function getMovie(id) {
   return response.data?.data ?? response.data
 }
 
-export async function createGDriveMovie(payload) {
+export async function createMovieFromURL(payload) {
   const response = await api.post('/movies', payload)
   return response.data?.data ?? response.data
 }
